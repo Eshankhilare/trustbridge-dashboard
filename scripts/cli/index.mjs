@@ -45,16 +45,16 @@ Security Note:
 `);
 }
 
-function maskApiKey(key?: string): string {
+function maskApiKey(key) {
   if (!key) return "[none]";
   if (key.length <= 8) return "********";
   return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
 
-export function parseArgs(rawArgs: string[]) {
+export function parseArgs(rawArgs) {
   const args = [...rawArgs];
   const command = args[0] && !args[0].startsWith("-") ? args.shift() : "";
-  const options: Record<string, string | boolean> = {};
+  const options = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -87,8 +87,8 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
 
   const storedConfig = loadStoredConfig();
-  const url = (options.url as string) || process.env.TRUSTBRIDGE_API_URL || storedConfig.apiUrl;
-  const apiKey = (options.apiKey as string) || process.env.TRUSTBRIDGE_API_KEY || storedConfig.apiKey;
+  const url = options.url || process.env.TRUSTBRIDGE_API_URL || storedConfig.apiUrl;
+  const apiKey = options.apiKey || process.env.TRUSTBRIDGE_API_KEY || storedConfig.apiKey;
 
   if (command === "login") {
     if (!url) {
@@ -98,7 +98,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     try {
       validateUrl(url);
     } catch (err) {
-      console.error(`Error: ${(err as Error).message}`);
+      console.error(`Error: ${err.message}`);
       return 1;
     }
 
@@ -120,12 +120,12 @@ export async function runCli(argv = process.argv.slice(2)) {
   try {
     validateUrl(url);
   } catch (err) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(`Error: ${err.message}`);
     return 1;
   }
 
   if (command === "export") {
-    const format = (options.format as "csv" | "json") || "csv";
+    const format = options.format || "csv";
     if (format !== "csv" && format !== "json") {
       console.error(`Error: Invalid export format "${format}". Supported formats: csv, json`);
       return 1;
@@ -140,7 +140,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       });
 
       if (options.out) {
-        const outPath = resolve(process.cwd(), options.out as string);
+        const outPath = resolve(process.cwd(), options.out);
         writeFileSync(outPath, data, "utf-8");
         console.error(`Treasury export written to ${outPath}`);
       } else if (filename && process.stdout.isTTY) {
@@ -152,7 +152,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       }
       return 0;
     } catch (err) {
-      console.error(`Error exporting treasury: ${(err as Error).message}`);
+      console.error(`Error exporting treasury: ${err.message}`);
       return 1;
     }
   }
@@ -164,12 +164,12 @@ export async function runCli(argv = process.argv.slice(2)) {
         url,
         apiKey,
         all: Boolean(options.all),
-        githubUsername: options.username as string | undefined,
+        githubUsername: options.username,
       });
       console.log(JSON.stringify(res.result, null, 2));
       return 0;
     } catch (err) {
-      console.error(`Error triggering recheck: ${(err as Error).message}`);
+      console.error(`Error triggering recheck: ${err.message}`);
       return 1;
     }
   }

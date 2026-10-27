@@ -43,6 +43,18 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     config.externals.push("pino-pretty", "lokijs", "encoding");
 
+    // @sentry/nextjs is an optional peer dependency (see src/lib/sentry.ts:
+    // lazy require with a no-op fallback). Mark it external on the server so
+    // the build does not try to bundle a package that is intentionally absent.
+    if (isServer) {
+      config.externals.push(({ request }, callback) => {
+        if (request === "@sentry/nextjs") {
+          return callback(null, "commonjs @sentry/nextjs");
+        }
+        callback();
+      });
+    }
+
     // Block accidental client bundling of stellar-sdk / native crypto
     if (!isServer) {
       config.resolve.alias = {

@@ -2,18 +2,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export interface CliConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  token?: string;
-}
-
-export function getConfigFilePath(): string {
+export function getConfigFilePath() {
   const configDir = process.env.TRUSTBRIDGE_CONFIG_DIR || join(homedir(), ".trustbridge");
   return join(configDir, "config.json");
 }
 
-export function loadStoredConfig(): CliConfig {
+export function loadStoredConfig() {
   const filePath = getConfigFilePath();
   if (!existsSync(filePath)) {
     return {};
@@ -26,7 +20,7 @@ export function loadStoredConfig(): CliConfig {
   }
 }
 
-export function saveStoredConfig(config: CliConfig): void {
+export function saveStoredConfig(config) {
   const filePath = getConfigFilePath();
   const dir = join(filePath, "..");
   if (!existsSync(dir)) {
@@ -37,8 +31,8 @@ export function saveStoredConfig(config: CliConfig): void {
   writeFileSync(filePath, JSON.stringify(merged, null, 2), { mode: 0o600 });
 }
 
-export function validateUrl(rawUrl: string, allowHttpForTesting = false): URL {
-  let parsed: URL;
+export function validateUrl(rawUrl, allowHttpForTesting = false) {
+  let parsed;
   try {
     parsed = new URL(rawUrl);
   } catch {
@@ -58,25 +52,7 @@ export function validateUrl(rawUrl: string, allowHttpForTesting = false): URL {
   return parsed;
 }
 
-export interface TreasuryExportOptions {
-  url: string;
-  apiKey?: string;
-  token?: string;
-  format?: "csv" | "json";
-}
-
-export interface RecheckOptions {
-  url: string;
-  apiKey?: string;
-  token?: string;
-  githubUsername?: string;
-  all?: boolean;
-}
-
-export async function fetchTreasuryExport(
-  options: TreasuryExportOptions,
-  fetchImpl: typeof fetch = fetch
-): Promise<{ data: string; contentType: string; filename?: string }> {
+export async function fetchTreasuryExport(options, fetchImpl = fetch) {
   const parsedUrl = validateUrl(options.url);
   const targetUrl = new URL("/api/treasury/export", parsedUrl);
 
@@ -87,7 +63,7 @@ export async function fetchTreasuryExport(
     );
   }
 
-  const headers: Record<string, string> = {
+  const headers = {
     Accept: options.format === "csv" ? "text/csv, application/json" : "application/json",
     Authorization: `Bearer ${authKey}`,
     "x-api-key": authKey,
@@ -107,7 +83,7 @@ export async function fetchTreasuryExport(
 
   const contentType = response.headers.get("content-type") || "";
   const disposition = response.headers.get("content-disposition") || "";
-  let filename: string | undefined;
+  let filename;
   const match = disposition.match(/filename="?([^";]+)"?/i);
   if (match) {
     filename = match[1];
@@ -117,10 +93,7 @@ export async function fetchTreasuryExport(
   return { data, contentType, filename };
 }
 
-export async function triggerRecheck(
-  options: RecheckOptions,
-  fetchImpl: typeof fetch = fetch
-): Promise<{ success: boolean; result: unknown }> {
+export async function triggerRecheck(options, fetchImpl = fetch) {
   const parsedUrl = validateUrl(options.url);
   const authKey = options.apiKey || options.token;
   if (!authKey) {
@@ -129,7 +102,7 @@ export async function triggerRecheck(
     );
   }
 
-  const headers: Record<string, string> = {
+  const headers = {
     "Content-Type": "application/json",
     Accept: "application/json",
     Authorization: `Bearer ${authKey}`,
