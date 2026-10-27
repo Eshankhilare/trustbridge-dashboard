@@ -226,6 +226,23 @@ describe("GET /api/stats — public, no auth required", () => {
 // GET /api/health — always 200, unauthenticated
 // ---------------------------------------------------------------------------
 describe("GET /api/health — always 200, unauthenticated", () => {
+  // The Horizon/Soroban probes hit live networks; stub fetch so these tests
+  // assert payload logic deterministically instead of network timing.
+  const realFetch = globalThis.fetch;
+  beforeEach(() => {
+    globalThis.fetch = (async (url: unknown) => {
+      const target = String(url);
+      if (target.includes("soroban")) {
+        return new Response(JSON.stringify({ result: { status: "healthy" } }), {
+          status: 200,
+        });
+      }
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
   it("returns 200 (not 401/403) even without a session", async () => {
     vi.mocked(getServerSession).mockResolvedValue(null);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([]);
