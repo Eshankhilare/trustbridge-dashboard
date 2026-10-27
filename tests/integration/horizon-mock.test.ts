@@ -56,6 +56,8 @@ describe("Horizon Mock Integration Tests (Shared WireMock Fixtures)", () => {
     expect(parseFloat(result.usdc_balance)).toBe(0);
   });
 
+  // Higher timeout: the default 3-attempt retry path uses real sleeps and
+  // can exceed 5s when the shared suite workers are CPU-saturated.
   it("handles unfunded account (404) gracefully", async () => {
     const address = HORIZON_TEST_ACCOUNTS.UNFUNDED;
 
@@ -69,7 +71,9 @@ describe("Horizon Mock Integration Tests (Shared WireMock Fixtures)", () => {
       },
     };
 
-    vi.spyOn(Horizon.Server.prototype, "loadAccount").mockRejectedValueOnce(notFoundError);
+    // mockRejectedValue (all calls): withRetry makes 3 attempts by default
+    // and unconsumed attempts would hit the live network.
+    vi.spyOn(Horizon.Server.prototype, "loadAccount").mockRejectedValue(notFoundError);
 
     const result = await checkStellarAddress(address, "USDC", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", { useCache: false });
 
@@ -77,7 +81,7 @@ describe("Horizon Mock Integration Tests (Shared WireMock Fixtures)", () => {
     expect(result.trustline).toBe(false);
     expect(result.xlm_balance).toBe("0");
     expect(result.usdc_balance).toBe("0");
-  });
+  }, 15000);
 
   it("handles rate limited Horizon response (429)", async () => {
     const address = HORIZON_TEST_ACCOUNTS.RATE_LIMITED;

@@ -7,6 +7,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     addressHistoryRecord: {
       count: vi.fn(),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
   },
 }));
