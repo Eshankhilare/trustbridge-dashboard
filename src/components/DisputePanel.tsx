@@ -31,7 +31,7 @@ export function DisputePanel({ contributors }: DisputePanelProps) {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const disputesQuery = useQuery({
+  useQuery({
     queryKey: ["disputes"],
     queryFn: async () => {
       const response = await fetch("/api/disputes");
@@ -149,7 +149,6 @@ export function DisputePanel({ contributors }: DisputePanelProps) {
             </Button>
           </div>
         )}
-        {resolveMutation.isError && <p className="text-sm text-destructive">{resolveMutation.error.message}</p>}
         {resolveMutation.isError && <p role="alert" className="text-sm text-destructive">{resolveMutation.error.message}</p>}
       </CardContent>
     </Card>

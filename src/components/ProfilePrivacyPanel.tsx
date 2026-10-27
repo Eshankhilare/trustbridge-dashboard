@@ -54,6 +54,12 @@ export function ProfilePrivacyPanel() {
   const settings = data?.settings ?? { profilePublic: false, showStellarAddress: false };
   const username = session?.user?.githubUsername;
 
+  // Signed-out visitors get nothing: the toggles PATCH an authenticated
+  // endpoint, so rendering them without a session would only produce 401s.
+  if (!session) {
+    return null;
+  }
+
   function toggle(field: keyof ProfilePrivacySettings) {
     const next = { ...settings };
     next[field] = !next[field];

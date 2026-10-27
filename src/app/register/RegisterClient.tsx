@@ -65,18 +65,6 @@ function normaliseChecklist(
 }
 
 // ---------------------------------------------------------------------------
-// API shape
-// ---------------------------------------------------------------------------
-
-interface RegistrationResponse {
-  registration?: {
-    stellarAddress: string;
-    readiness: "ready" | "low_reserve" | "not_ready";
-    checklistCompleted?: OnboardingChecklistState | null;
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 import { isValidGAddress } from "@/lib/stellar-address";
@@ -154,15 +142,6 @@ export function RegisterClient() {
    */
   const saveMutation = useMutation({
     mutationFn: async (stellarAddress: string) => {
-      const response = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stellarAddress }),
-      });
-      const data = (await response.json()) as {
-        error?: string;
-        registration?: RegistrationResponse["registration"];
-      };
       let response: Response;
       try {
         response = await fetch("/api/register", {
@@ -190,16 +169,24 @@ export function RegisterClient() {
     },
     onSuccess: (data) => {
       setSaved(true);
-      // Mark the address registration step as complete.
+      // Mark the address registration step as complete locally for instant
+      // paint, and persist it so it survives reloads (best-effort).
       dispatchChecklist({ type: "COMPLETE_STEP", key: "addressRegistered" });
+      checklistMutation.mutate({ stepId: "addressRegistered", completed: true });
 
       // If the returned registration is ready, mark readiness confirmed too.
-      if (data.registration?.readiness === "ready") {
+      if (data?.registration?.readiness === "ready") {
         dispatchChecklist({ type: "COMPLETE_STEP", key: "readinessConfirmed" });
+        checklistMutation.mutate({
+          stepId: "readinessConfirmed",
+          completed: true,
+        });
       }
 
       queryClient.invalidateQueries({ queryKey: ["registration"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      setFailure(null);
+    },
 
     onMutate: async (stellarAddress: string) => {
       setFailure(null);
@@ -247,12 +234,6 @@ export function RegisterClient() {
       if (!mapped.keepAddress) {
         setAddress("");
       }
-    },
-
-    onSuccess: () => {
-      setSaved(true);
-      setFailure(null);
-      void queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
 
     onSettled: () => {
@@ -337,15 +318,6 @@ export function RegisterClient() {
   const proof =
     existingQuery.data?.registration?.walletProof ??
     buildWalletProofInfo(proofAddress, session?.user?.githubUsername ?? null);
-
-  const rawChecklist =
-    existingQuery.data?.checklistCompleted ??
-    currentRegistration?.checklistCompleted ??
-    {};
-  const checklistCompleted: OnboardingChecklistState = {
-    ...rawChecklist,
-    ...(existingAddress ? { register_address: true } : {}),
-  };
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6" data-testid="register-page">

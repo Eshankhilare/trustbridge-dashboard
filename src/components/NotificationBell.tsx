@@ -32,13 +32,12 @@ export function NotificationBell() {
 
   const bellButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
-  const closeButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   const titleId = React.useId();
   const popoverId = React.useId();
 
   // Fetch notifications with lightweight 30s background polling
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: NOTIFICATIONS_QUERY_KEY,
     queryFn: async (): Promise<NotificationsApiResponse> => {
       const res = await fetch("/api/notifications");

@@ -5,7 +5,6 @@ import {
   ArrowRightLeft,
   Download,
   FileDown,
-  FileUp,
   Trash2,
   Upload,
   X,
@@ -156,7 +155,6 @@ export function SnapshotDiffPanel() {
           {(["old", "new"] as const).map((which) => {
             const state = which === "old" ? oldSnap : newSnap;
             const inputRef = which === "old" ? oldInput : newInput;
-            const setter = which === "old" ? setOldSnap : setNewSnap;
             return (
               <div
                 key={which}

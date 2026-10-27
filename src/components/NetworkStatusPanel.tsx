@@ -234,6 +234,10 @@ function NetworkSwitchConfirmation({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
 function RpcHealthSection({
   state,
   onRefresh,
@@ -424,11 +428,6 @@ export function NetworkStatusPanel({
     return () => controller.abort();
   }, [loadHealth]);
 
-  const mismatchWarnings = mismatched
-    ? warnings.filter((warning) =>
-        /Horizon is configured for/i.test(warning)
-      )
-    : [];
   const otherWarnings = mismatched
     ? warnings.filter(
         (warning) => !/Horizon is configured for/i.test(warning)
@@ -519,9 +518,7 @@ export function NetworkStatusPanel({
             sorobanNetwork={sorobanNetwork}
             horizonUrl={horizonUrl}
             sorobanUrl={sorobanUrl}
-            warnings={
-              mismatchWarnings.length > 0 ? mismatchWarnings : warnings
-            }
+            warnings={warnings}
           />
         )}
 

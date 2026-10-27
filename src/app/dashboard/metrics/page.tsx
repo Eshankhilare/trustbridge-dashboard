@@ -338,6 +338,218 @@ export default function MetricsPage() {
         </CardContent>
       </Card>
 
+      {/* ── Circuit Breaker Status ─────────────────────────────── */}
+      <Card className="mb-6" data-testid="metrics-circuit-breaker">
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Horizon circuit breaker
+              </CardTitle>
+              <CardDescription>
+                Protects Horizon from cascading failures during incidents.
+              </CardDescription>
+            </div>
+            <CircuitBreakerStateBadge state={circuitBreaker.state} />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-border-strong px-3 py-3">
+              <p className="text-xs text-muted-foreground">State</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{circuitBreaker.state}</p>
+            </div>
+            <div className="rounded-lg border border-border-strong px-3 py-3">
+              <p className="text-xs text-muted-foreground">Total trips</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{circuitBreaker.totalTrips}</p>
+            </div>
+            <div className="rounded-lg border border-border-strong px-3 py-3">
+              <p className="text-xs text-muted-foreground">Current failures</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                {circuitBreaker.failureCount}
+                <span className="text-xs text-muted-foreground">
+                  /{config.circuitBreakerFailureThreshold}
+                </span>
+              </p>
+            </div>
+            <div className="rounded-lg border border-border-strong px-3 py-3">
+              <p className="text-xs text-muted-foreground">Last failure</p>
+              <p className="mt-1 text-xs font-medium">
+                {formatTimestamp(circuitBreaker.lastFailureTime)}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Recent trips</h3>
+            {circuitBreaker.recentTrips.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border-strong px-4 py-3 text-sm text-muted-foreground">
+                No trips recorded. Circuit has been healthy since process start.
+              </p>
+            ) : (
+              <div
+                className="overflow-x-auto"
+                data-testid="metrics-circuit-breaker-trips"
+              >
+                <table className="w-full min-w-[320px] text-sm">
+                  <caption className="sr-only">
+                    Recent circuit breaker trips, most recent first.
+                  </caption>
+                  <thead>
+                    <tr className="border-b-2 border-border-strong text-left text-muted-foreground">
+                      <th scope="col" className="pb-2 font-medium">
+                        Tripped at
+                      </th>
+                      <th scope="col" className="pb-2 font-medium">
+                        Failures at trip
+                      </th>
+                      <th scope="col" className="pb-2 font-medium">
+                        Recovered at
+                      </th>
+                      <th scope="col" className="pb-2 font-medium">
+                        Duration
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...circuitBreaker.recentTrips]
+                      .reverse()
+                      .map((trip, idx) => (
+                        <tr
+                          key={`${trip.trippedAt}-${idx}`}
+                          className="border-b border-border-strong last:border-0"
+                        >
+                          <td className="py-3 font-mono text-xs">
+                            {new Date(trip.trippedAt).toLocaleString()}
+                          </td>
+                          <td className="py-3 tabular-nums">
+                            {trip.failureCountAtTrip}
+                          </td>
+                          <td className="py-3 font-mono text-xs">
+                            {trip.recoveredAt
+                              ? new Date(trip.recoveredAt).toLocaleString()
+                              : (
+                                <Badge variant="destructive" className="text-xs">
+                                  Still open
+                                </Badge>
+                              )}
+                          </td>
+                          <td className="py-3 tabular-nums">
+                            {trip.recoveredAt
+                              ? `${Math.round((trip.recoveredAt - trip.trippedAt) / 1000)}s`
+                              : `${Math.round((Date.now() - trip.trippedAt) / 1000)}s*`}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <ProcessLocalNote />
+        </CardContent>
+      </Card>
+
+
+      {/* ── Rate Limit Status ──────────────────────────────────── */}
+      <Card className="mb-6" data-testid="metrics-rate-limit">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
+            Rate limiting
+          </CardTitle>
+          <CardDescription>
+            Per-IP request throttling for the check endpoint.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-4 dark:border-emerald-600 dark:bg-emerald-950/40">
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Requests allowed
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                {rateLimit.totalAllowed.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-4 dark:border-red-600 dark:bg-red-950/40">
+              <p className="text-xs text-red-700 dark:text-red-300">
+                Requests blocked
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-red-700 dark:text-red-300">
+                {rateLimit.totalBlocked.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border-strong px-4 py-4">
+              <p className="text-xs text-muted-foreground">
+                Active clients (window)
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">
+                {rateLimit.activeIdentifiers.toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border-strong px-3 py-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Window: {msToSeconds(config.rateLimitWindowMs)}s · Max: {config.rateLimitMaxRequests} req
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                Block rate:{" "}
+                {rateLimit.totalAllowed + rateLimit.totalBlocked > 0
+                  ? `${((rateLimit.totalBlocked / (rateLimit.totalAllowed + rateLimit.totalBlocked)) * 100).toFixed(1)}%`
+                  : "0%"}
+              </span>
+            </div>
+          </div>
+
+          <ProcessLocalNote />
+        </CardContent>
+      </Card>
+
+
+      {/* ── Worker health & queue metrics ──────────────────────── */}
+      <Card className="mb-6" data-testid="metrics-queue-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-amber-500" />
+            Worker health & background queue
+          </CardTitle>
+          <CardDescription>
+            Live status of background recheck worker jobs and queue depth.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3 sm:gap-4">
+            <div className="rounded-lg border border-border px-4 py-3">
+              <p className="text-2xl font-bold">{queueHealthQuery.data?.depth ?? 0}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Queue depth (pending)</p>
+            </div>
+            <div className="rounded-lg border border-border px-4 py-3">
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {queueHealthQuery.data?.failedCount ?? 0}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Failed jobs</p>
+            </div>
+            <div className="rounded-lg border border-border px-4 py-3">
+              <p className="text-sm font-medium">
+                {queueHealthQuery.data?.oldestPendingJobCreatedAt
+                  ? new Date(queueHealthQuery.data.oldestPendingJobCreatedAt).toLocaleTimeString()
+                  : "None"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Oldest pending job</p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md border border-border/50">
+            <strong>Serverless Note:</strong> {queueHealthQuery.data?.serverlessNotice || "Background jobs are persisted in PostgreSQL. Worker polling is bound to serverless request execution limits."}
+          </p>
+        </CardContent>
+      </Card>
+
+
       {/* ── Operational config ────────────────────────────────── */}
       <Card>
         <CardHeader>

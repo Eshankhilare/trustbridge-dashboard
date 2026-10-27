@@ -34,8 +34,12 @@ export function FreezeWindowBanner({
 
   const fmt = (iso?: string) => {
     if (!iso) return null;
+    const parsed = new Date(iso);
+    // `new Date()` never throws on garbage input — it yields Invalid Date.
+    // Fall back to the raw string so operators still see what was configured.
+    if (Number.isNaN(parsed.getTime())) return iso;
     try {
-      return new Date(iso).toLocaleString(undefined, {
+      return parsed.toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
       });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 
 import {
   Card,
