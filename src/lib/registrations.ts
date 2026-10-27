@@ -174,7 +174,8 @@ interface RecheckOutcome {
  */
 export async function getContributorsPaginated(
   cursor?: string,
-  limit: number = 50
+  limit: number = 50,
+  verificationStatus?: 'verified' | 'unverified' | 'banned'
 ): Promise<{
   contributors: ContributorRow[];
   nextCursor: string | null;
@@ -185,9 +186,24 @@ export async function getContributorsPaginated(
   const decodedCursor = cursor ? decodeCursor(cursor) : null;
   const normalizedLimit = Math.min(Math.max(limit, 1), 100);
 
+  // Optional Issue #602 filter. Applied in the database query (not after
+  // pagination) so page sizes stay stable when a filter is active.
+  // verified = funded + trustline present + authorized (mirrors
+  // computeVerified in src/lib/readiness.ts); unverified = anything else.
+  const statusFilter =
+    verificationStatus === 'verified'
+      ? { funded: true, trustlineReady: true, trustlineAuthorized: true }
+      : verificationStatus === 'unverified'
+        ? { OR: [{ funded: false }, { trustlineReady: false }, { trustlineAuthorized: false }] }
+        : undefined;
+
   // Fetch normalizedLimit + 1 to determine if there are more records
   const registrations = await prisma.registration.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      ...statusFilter,
+      ...(verificationStatus === 'banned' ? { user: { banned: true } } : {}),
+    },
     include: {
       user: {
         select: { githubUsername: true },
