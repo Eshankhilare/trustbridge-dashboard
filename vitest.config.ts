@@ -33,11 +33,14 @@ export default defineConfig({
       ["tests/**/*.test.tsx", "jsdom"],
     ],
     setupFiles: ["./tests/setup.ts"],
-    pool: "threads",
+    // Prisma's native query engine aborts under Vitest worker threads
+    // (`Failed to deserialize constructor options`). Forks isolate each
+    // worker process so `npm test` matches a green CI run.
+    pool: "forks",
     poolOptions: {
-      threads: {
-        maxThreads: 4,
-        minThreads: 1,
+      forks: {
+        maxForks: 4,
+        minForks: 1,
       },
     },
   },
