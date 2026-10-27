@@ -22,25 +22,16 @@ export default defineConfig({
       "stellar-sdk": path.resolve(
         __dirname,
         "./node_modules/stellar-sdk/lib/index.js"
-      "server-only": path.resolve(
-        __dirname,
-        "./node_modules/server-only/empty.js"
       ),
     },
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts", "src/**/*.test.tsx"],
-    include: [
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
-      "tests/**/*.test.ts",
-    ],
+    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
     environmentMatchGlobs: [
       ["src/**/*.test.tsx", "jsdom"],
       ["tests/**/*.test.tsx", "jsdom"],
     ],
-    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/setup.ts"],
     pool: "threads",
     poolOptions: {
