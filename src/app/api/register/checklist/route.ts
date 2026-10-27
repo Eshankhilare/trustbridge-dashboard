@@ -4,18 +4,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { prisma } from "@/lib/prisma";
-import type { OnboardingChecklistState } from "@/types";
+import {
+  type OnboardingChecklistKey,
+  type OnboardingChecklistState,
+  parseChecklistState,
+} from "@/types";
 import { captureException } from "@/lib/sentry";
-import { type OnboardingChecklistState, parseChecklistState } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Known checklist keys — used server-side to strip unknown fields from PATCH
- * payloads before persisting, keeping client and API state aligned.
+ * Known checklist keys — used server-side to strip unknown fields from flat
+ * PATCH payloads before persisting, keeping client and API state aligned.
  */
-const KNOWN_CHECKLIST_KEYS: Array<keyof OnboardingChecklistState> = [
+const KNOWN_CHECKLIST_KEYS: Array<OnboardingChecklistKey> = [
   "stellarAccountCreated",
   "usdcTrustlineAdded",
   "addressRegistered",
@@ -40,30 +43,34 @@ export async function GET() {
   return NextResponse.json({ checklistCompleted });
 }
 
-/**
- * PATCH /api/register/checklist — merge partial checklist updates.
- * Completed steps are never cleared; unknown keys are stripped to prevent
- * drift between the client model and the persisted record.
 const VALID_STEP_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_STEPS_ALLOWED = 50;
 
+type ChecklistUpdatesResult =
+  | { valid: true; updates: OnboardingChecklistState }
+  | { valid: false; updates: OnboardingChecklistState; error: string };
+
 /**
- * Validate incoming checklist update payload.
- * Prevents PII injection and ensures only valid boolean state is stored.
+ * Validate an incoming checklist update payload.
+ *
+ * Three shapes are accepted:
+ * - Single-step toggle: `{ stepId: string, completed: boolean }`.
+ * - Multi-step update: `{ steps: Record<string, boolean> }` or
+ *   `{ checklistCompleted: Record<string, boolean> }`.
+ * - Flat map of canonical fields: `{ addressRegistered: true, ... }` —
+ *   only known keys are kept, unknown keys are stripped.
+ *
+ * Step keys must match VALID_STEP_REGEX (prevents PII/injection) and values
+ * must be booleans so only valid boolean state is stored.
  */
-function validateChecklistPayload(body: unknown): {
-  valid: boolean;
-  updates: OnboardingChecklistState;
-  error?: string;
-} {
+function parseChecklistUpdates(body: unknown): ChecklistUpdatesResult {
   if (!body || typeof body !== "object") {
     return { valid: false, updates: {}, error: "Invalid request payload" };
   }
 
   const payload = body as Record<string, unknown>;
-  const updates: OnboardingChecklistState = {};
 
-  // Case 1: Single step toggle { stepId: string, completed: boolean }
+  // Case 1: single-step toggle { stepId: string, completed: boolean }
   if ("stepId" in payload) {
     const stepId = payload.stepId;
     const completed = payload.completed;
@@ -72,36 +79,70 @@ function validateChecklistPayload(body: unknown): {
       return { valid: false, updates: {}, error: "Invalid stepId format" };
     }
     if (typeof completed !== "boolean") {
-      return { valid: false, updates: {}, error: "completed must be a boolean" };
+      return {
+        valid: false,
+        updates: {},
+        error: "completed must be a boolean",
+      };
     }
 
-    updates[stepId] = completed;
+    return { valid: true, updates: { [stepId]: completed } };
+  }
+
+  // Case 2: multi-step update { steps } or { checklistCompleted }
+  if (payload.steps !== undefined || payload.checklistCompleted !== undefined) {
+    const stepsCandidate = (payload.steps ??
+      payload.checklistCompleted) as Record<string, unknown>;
+
+    if (
+      typeof stepsCandidate !== "object" ||
+      stepsCandidate === null ||
+      Array.isArray(stepsCandidate)
+    ) {
+      return {
+        valid: false,
+        updates: {},
+        error: "Checklist steps must be an object",
+      };
+    }
+
+    const entries = Object.entries(stepsCandidate);
+    if (entries.length > MAX_STEPS_ALLOWED) {
+      return {
+        valid: false,
+        updates: {},
+        error: "Too many checklist steps",
+      };
+    }
+
+    const updates: OnboardingChecklistState = {};
+    for (const [key, val] of entries) {
+      if (!VALID_STEP_REGEX.test(key)) {
+        return {
+          valid: false,
+          updates: {},
+          error: `Invalid step key: ${key}`,
+        };
+      }
+      if (typeof val !== "boolean") {
+        return {
+          valid: false,
+          updates: {},
+          error: `Value for ${key} must be a boolean`,
+        };
+      }
+      updates[key] = val;
+    }
+
     return { valid: true, updates };
   }
 
-  // Case 2: Multi-step update { steps: Record<string, boolean> } or { checklistCompleted: Record<string, boolean> }
-  const stepsCandidate = (payload.steps ?? payload.checklistCompleted ?? payload) as Record<
-    string,
-    unknown
-  >;
-
-  if (typeof stepsCandidate !== "object" || stepsCandidate === null) {
-    return { valid: false, updates: {}, error: "Checklist steps must be an object" };
-  }
-
-  const entries = Object.entries(stepsCandidate);
-  if (entries.length > MAX_STEPS_ALLOWED) {
-    return { valid: false, updates: {}, error: "Too many checklist steps" };
-  }
-
-  for (const [key, val] of entries) {
-    if (!VALID_STEP_REGEX.test(key)) {
-      return { valid: false, updates: {}, error: `Invalid step key: ${key}` };
+  // Case 3: flat map of canonical checklist fields — strip unknown keys.
+  const updates: OnboardingChecklistState = {};
+  for (const key of KNOWN_CHECKLIST_KEYS) {
+    if (typeof payload[key] === "boolean") {
+      updates[key] = payload[key] as boolean;
     }
-    if (typeof val !== "boolean") {
-      return { valid: false, updates: {}, error: `Value for ${key} must be a boolean` };
-    }
-    updates[key] = val;
   }
 
   return { valid: true, updates };
@@ -111,7 +152,8 @@ function validateChecklistPayload(body: unknown): {
  * PATCH /api/register/checklist
  *
  * Persists onboarding checklist step completion for the signed-in user.
- * Merges updates with existing state to prevent multi-tab stomp.
+ * Merges updates with existing state (user + registration) to prevent
+ * multi-tab stomps and to never wipe previously completed steps.
  */
 export async function PATCH(request: NextRequest) {
   const csrf = assertSameOrigin(request);
@@ -122,20 +164,34 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as Record<string, unknown>;
-
-  // Strip unknown keys — only merge recognised checklist fields.
-  const incoming: OnboardingChecklistState = {};
-  for (const key of KNOWN_CHECKLIST_KEYS) {
-    if (typeof body[key] === "boolean") {
-      incoming[key] = body[key] as boolean;
-    }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request payload" },
+      { status: 400 }
+    );
   }
 
-  const registration = await prisma.registration.findUnique({
-    where: { userId: session.user.id },
-    select: { checklistCompleted: true },
-  });
+  const parsed = parseChecklistUpdates(body);
+  if (!parsed.valid) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  const userId = session.user.id;
+
+  // Fetch existing checklist state from the user record and/or registration.
+  const [user, registration] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { checklistCompleted: true },
+    }),
+    prisma.registration.findUnique({
+      where: { userId },
+      select: { id: true, deletedAt: true, checklistCompleted: true },
+    }),
+  ]);
 
   if (!registration) {
     return NextResponse.json(
@@ -144,83 +200,36 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const existing =
-    (registration.checklistCompleted as OnboardingChecklistState | null) ?? {};
+  const merged: OnboardingChecklistState = {
+    ...parseChecklistState(user?.checklistCompleted),
+    ...parseChecklistState(registration.checklistCompleted),
+    ...parsed.updates,
+  };
 
-  // Merge: completed steps from `existing` are preserved; `incoming` can only
-  // set steps to true, never revert them to false.
-  const merged: OnboardingChecklistState = { ...existing };
-  for (const key of KNOWN_CHECKLIST_KEYS) {
-    if (incoming[key] === true) {
-      merged[key] = true;
-    }
-  }
-
-  await prisma.registration.update({
-    where: { userId: session.user.id },
-    data: { checklistCompleted: merged },
-  });
-
-  return NextResponse.json({ checklistCompleted: merged });
+  // Persist to the User record and the active Registration atomically.
   try {
-    const rawBody = (await request.json().catch(() => null)) as unknown;
-    const { valid, updates, error } = validateChecklistPayload(rawBody);
-
-    if (!valid) {
-      return NextResponse.json({ error: error ?? "Invalid payload" }, { status: 400 });
-    }
-
-    const userId = session.user.id;
-
-    // Fetch existing checklist from user and/or registration
-    const [user, registration] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { checklistCompleted: true },
-      }),
-      prisma.registration.findUnique({
-        where: { userId },
-        select: { id: true, deletedAt: true, checklistCompleted: true },
-      }),
-    ]);
-
-    const existingUserChecklist = parseChecklistState(user?.checklistCompleted);
-    const existingRegChecklist = parseChecklistState(registration?.checklistCompleted);
-
-    const mergedChecklist: OnboardingChecklistState = {
-      ...existingUserChecklist,
-      ...existingRegChecklist,
-      ...updates,
-    };
-
-    // Atomically persist to User and active Registration
     const dbOperations: Array<Promise<unknown>> = [
       prisma.user.update({
         where: { id: userId },
-        data: { checklistCompleted: mergedChecklist },
+        data: { checklistCompleted: merged },
       }),
     ];
 
-    if (registration && !registration.deletedAt) {
+    if (!registration.deletedAt) {
       dbOperations.push(
         prisma.registration.update({
           where: { id: registration.id },
-          data: { checklistCompleted: mergedChecklist },
+          data: { checklistCompleted: merged },
         })
       );
     }
 
     await Promise.all(dbOperations);
-
-    return NextResponse.json({
-      success: true,
-      checklistCompleted: mergedChecklist,
-    });
   } catch (err) {
     captureException(err, {
       route: "/api/register/checklist",
       method: "PATCH",
-      userId: session.user.id,
+      userId,
     });
 
     return NextResponse.json(
@@ -228,4 +237,6 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  return NextResponse.json({ success: true, checklistCompleted: merged });
 }

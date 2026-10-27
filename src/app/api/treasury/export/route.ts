@@ -79,7 +79,7 @@ function toExportItem(reg: {
   };
 }
 
-export async function GET(request?: NextRequest) {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
 
   let actorId: string | null = null;
@@ -92,9 +92,6 @@ export async function GET(request?: NextRequest) {
     exportedBy = session.user.email ?? session.user.githubUsername ?? "";
   } else {
     // Maintainer session absent — fall back to a scoped API key.
-    if (!request) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
     const apiKeyAuth = await authenticateApiKey(request);
     if (!apiKeyAuth) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -122,7 +119,7 @@ export async function GET(request?: NextRequest) {
     exportedBy = actorLogin;
   }
 
-  const pagination = parseExportPagination(request?.nextUrl?.searchParams);
+  const pagination = parseExportPagination(request.nextUrl.searchParams);
   if (!pagination.ok) {
     return NextResponse.json({ error: pagination.error }, { status: 400 });
   }
@@ -168,7 +165,7 @@ export async function GET(request?: NextRequest) {
     },
   });
 
-  const response: TreasuryExportResponse & {
+  const response: TreasuryExportResponse & Record<string, unknown> & {
     offset: number;
     limit: number;
     hasMore: boolean;
@@ -379,7 +376,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const response: TreasuryExportResponse & {
+  const response: TreasuryExportResponse & Record<string, unknown> & {
     offset: number;
     limit: number;
     hasMore: boolean;

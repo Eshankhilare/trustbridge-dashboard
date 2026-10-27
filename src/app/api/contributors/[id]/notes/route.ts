@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 const NotesBodySchema = z.object({
   notes: z
     .string()
-    .transform(sanitizeMarkdown)
+    .transform((input) => sanitizeMarkdown(input))
     .pipe(
       z
         .string()

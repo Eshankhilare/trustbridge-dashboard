@@ -24,7 +24,6 @@ import {
   trackServerRegistrationCreated,
   trackServerRegistrationUpdated,
 } from "@/lib/analytics";
-import { recordRegistrationConflict } from "@/lib/maintainers";
 import {
   checkRateLimit,
   buildRateLimitHeaders,
@@ -47,8 +46,11 @@ export const dynamic = "force-dynamic";
  * alongside the message.
  *
  * `error` is unchanged and stays the string a human reads.
+ *
+ * Module-local: route modules may only export handlers, so this is not
+ * exported (Next.js route-type validation rejects extra exports).
  */
-export const REGISTER_ERROR_CODES = {
+const REGISTER_ERROR_CODES = {
   /** Not signed in, or the session expired mid-form. */
   unauthorized: "UNAUTHORIZED",
   /** Request failed the same-origin check. */
@@ -86,6 +88,10 @@ function isUniqueAddressViolation(error: unknown): boolean {
 export async function POST(request: NextRequest) {
   const csrf = assertSameOrigin(request);
   if (csrf) return csrf;
+
+  // Validated Stellar address for this request. Assigned inside `try` after
+  // input validation; read by the racing-writer handler in `catch`.
+  let stellarAddress = "";
 
   // Per-IP rate limit — mirrors the pattern used by POST /api/check.
   // Contributors registering an address rarely need more than a handful of
@@ -145,7 +151,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const stellarAddress = body.stellarAddress!.trim();
+    // Hoisted for the racing-writer handler in `catch` below, which needs the
+    // validated address even when the upsert throws.
+    stellarAddress = body.stellarAddress!.trim();
 
     const existing = await prisma.registration.findFirst({
       where: { stellarAddress },
@@ -278,7 +286,11 @@ export async function POST(request: NextRequest) {
     // Mirror registration to Soroban contract (best-effort, non-blocking).
     // Fire-and-forget: don't await or let failures affect the response.
     void Promise.resolve(
-      mirrorRegistrationToSoroban(registration, session.user.githubUsername ?? undefined)
+      mirrorRegistrationToSoroban({
+        githubUsername: session.user.githubUsername ?? "",
+        stellarAddress,
+        registrationId: registration.id,
+      })
     ).catch((error) => {
       console.error("Soroban registration mirror failed:", error);
       captureException(error, {

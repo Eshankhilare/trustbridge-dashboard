@@ -1,5 +1,6 @@
 import {
   GraphQLBoolean,
+  GraphQLEnumType,
   GraphQLError,
   GraphQLInt,
   GraphQLList,
@@ -339,6 +340,122 @@ function analyzeDocument(
         if (selection.selectionSet) {
           inspect(selection.selectionSet, nextDepth, childMultiplier, fragmentPath);
         }
-      } else if (selection.kind === "Inlin
+      } else if (selection.kind === "InlineFragment") {
+        inspect(selection.selectionSet, depth, multiplier, fragmentPath);
+      } else if (!fragmentPath.has(selection.name.value)) {
+        const fragment = fragments.get(selection.name.value);
+        if (fragment) {
+          const nextPath = new Set(fragmentPath);
+          nextPath.add(selection.name.value);
+          inspect(fragment.selectionSet, depth, multiplier, nextPath);
+        }
+      }
+    }
+  }
 
-/* … truncated 3560 chars — edit only what you need near the top … */
+  for (const definition of definitions) {
+    if (definition.kind === "OperationDefinition") {
+      if (definition.operation !== "query") {
+        return "Only read-only query operations are supported";
+      }
+      inspect(definition.selectionSet, 0, 1, new Set());
+    }
+  }
+
+  if (tooDeep) return `Query depth exceeds the limit of ${MAX_QUERY_DEPTH}`;
+  if (pageSizeError) return pageSizeError;
+  if (fieldCount > MAX_QUERY_FIELDS) {
+    return `Query field count exceeds the limit of ${MAX_QUERY_FIELDS}`;
+  }
+  if (cost > MAX_QUERY_COST) {
+    return `Query cost exceeds the limit of ${MAX_QUERY_COST}`;
+  }
+  return null;
+}
+
+export async function POST(request: NextRequest) {
+  const clientIp = extractClientIp(request);
+  const rateLimit = checkRateLimit(clientIp, {
+    maxRequests: MAX_REQUESTS_PER_MINUTE,
+  });
+  const rateLimitHeaders = buildRateLimitHeaders(
+    rateLimit,
+    MAX_REQUESTS_PER_MINUTE
+  );
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { errors: [{ message: "Rate limit exceeded" }] },
+      { status: 429, headers: rateLimitHeaders }
+    );
+  }
+
+  const bodyText = await request.text();
+  if (Buffer.byteLength(bodyText, "utf8") > MAX_QUERY_BYTES) {
+    return NextResponse.json(
+      { errors: [{ message: "Query body is too large" }] },
+      { status: 413, headers: rateLimitHeaders }
+    );
+  }
+
+  let body: { query?: unknown; variables?: unknown };
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    return NextResponse.json(
+      { errors: [{ message: "Invalid JSON body" }] },
+      { status: 400, headers: rateLimitHeaders }
+    );
+  }
+
+  if (typeof body.query !== "string") {
+    return NextResponse.json(
+      { errors: [{ message: "A query string is required" }] },
+      { status: 400, headers: rateLimitHeaders }
+    );
+  }
+
+  const variables =
+    body.variables && typeof body.variables === "object" && !Array.isArray(body.variables)
+      ? (body.variables as Record<string, unknown>)
+      : {};
+
+  let document;
+  try {
+    document = parse(body.query);
+  } catch (error) {
+    return NextResponse.json(
+      { errors: [{ message: error instanceof Error ? error.message : "Invalid GraphQL query" }] },
+      { status: 400, headers: rateLimitHeaders }
+    );
+  }
+
+  const limitError = analyzeDocument(document.definitions, variables);
+  if (limitError) {
+    return NextResponse.json(
+      { errors: [{ message: limitError }] },
+      { status: 400, headers: rateLimitHeaders }
+    );
+  }
+
+  const validationRules =
+    process.env.NODE_ENV === "production"
+      ? [NoSchemaIntrospectionCustomRule]
+      : undefined;
+  const validationErrors = validate(schema, document, validationRules);
+  if (validationErrors.length > 0) {
+    return NextResponse.json(
+      { errors: validationErrors.map((error) => ({ message: error.message })) },
+      { status: 400, headers: rateLimitHeaders }
+    );
+  }
+
+  const session = await requireMaintainerSession();
+  const result = await graphql({
+    schema,
+    source: body.query,
+    variableValues: variables,
+    contextValue: { isMaintainer: Boolean(session) },
+  });
+
+  return NextResponse.json(result);
+}

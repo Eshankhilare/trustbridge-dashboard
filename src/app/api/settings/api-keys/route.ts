@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
 const CreateApiKeySchema = z.object({
   name: z
     .string()
+    .trim()
     .min(1, "Name is required")
-    .max(80, "Name must be 80 characters or fewer")
-    .trim(),
+    .max(80, "Name must be 80 characters or fewer"),
   scopes: z
     .array(z.enum(API_KEY_SCOPE_VALUES))
     .min(1, "At least one scope is required")
@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
       scopes: true,
       createdAt: true,
       revokedAt: true,
+      expiresAt: true,
       // A freshly created key has never been used.
       lastUsedAt: true,
     },

@@ -19,7 +19,7 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const maintainerOrgId = (session.user as any).maintainerOrgId;
+  const maintainerOrgId = session.user.maintainerOrgId;
   const conflicts = await listRegistrationConflicts({ maintainerOrgId });
 
   return NextResponse.json({ conflicts });

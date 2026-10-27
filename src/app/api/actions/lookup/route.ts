@@ -72,7 +72,10 @@ export async function GET(request: NextRequest) {
     );
 
     return withPublicCors(NextResponse.json(result, {
-      headers: buildLookupCacheHeaders(LOOKUP_CACHE_TTL_MS),
+      headers: {
+        ...rateLimitHeaders,
+        ...buildLookupCacheHeaders(LOOKUP_CACHE_TTL_MS),
+      },
     }));
   } catch {
     return withPublicCors(NextResponse.json({ error: "Lookup failed" }, { status: 500 }));

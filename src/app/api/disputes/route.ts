@@ -43,8 +43,10 @@ export async function GET(request: NextRequest) {
   let limit = DEFAULT_DISPUTES_LIMIT;
   if (limitParam) {
     const parsed = parseInt(limitParam, 10);
-    if (!isNaN(parsed) && parsed > 0 && parsed <= MAX_DISPUTES_LIMIT) {
-      limit = parsed;
+    if (!isNaN(parsed) && parsed > 0) {
+      // Clamp to the maximum instead of falling back, so an explicit
+      // over-max request still returns the largest allowed page.
+      limit = Math.min(parsed, MAX_DISPUTES_LIMIT);
     }
   }
 
@@ -189,7 +191,9 @@ export async function PATCH(request: NextRequest) {
     trackServerDisputeClosed({
       userId: session.user.id,
       disputeId: updated.id,
-      status: updated.status,
+      // `parsed.data.status` is validated as VALIDATED | REJECTED above, so
+      // prefer it over `updated.status` (typed as the full enum).
+      status: parsed.data.status,
     });
   }
 

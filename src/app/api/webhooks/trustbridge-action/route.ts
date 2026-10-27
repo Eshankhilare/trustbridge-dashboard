@@ -1,42 +1,11 @@
-import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
+import { verifySignature } from "@/lib/trustbridge-action-webhook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Verifies the trustbridge-action webhook signature to ensure the request is authentic.
- * trustbridge-action sends the signature in the X-TrustBridge-Signature header in `sha256=<hex>` format.
- *
- * Exported for direct unit-testing of the timing-safe comparison path.
- */
-export function verifySignature(payload: Buffer, signature: string | undefined): boolean {
-  const secret = process.env.TRUSTBRIDGE_ACTION_SECRET?.trim();
-  if (!secret) {
-    console.warn("TRUSTBRIDGE_ACTION_SECRET not configured — webhook signature verification failed");
-    return false;
-  }
-
-  if (!signature) {
-    console.warn("Missing X-TrustBridge-Signature header");
-    return false;
-  }
-
-  const hmac = crypto.createHmac("sha256", secret);
-  hmac.update(payload);
-  const digest = `sha256=${hmac.digest("hex")}`;
-
-  const digestBuf = Buffer.from(digest);
-  const sigBuf = Buffer.from(signature);
-  if (digestBuf.length !== sigBuf.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(digestBuf, sigBuf);
-}
 
 /**
  * Webhook receiver for trustbridge-action `validation_complete` events.

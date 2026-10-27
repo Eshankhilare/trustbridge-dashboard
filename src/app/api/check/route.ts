@@ -12,7 +12,6 @@ import { checkStellarAddress } from "@/lib/horizon";
 import { checkCache, buildCacheKey } from "@/lib/cache";
 import { captureException } from "@/lib/sentry";
 import { publicOptionsResponse, withPublicCors } from "@/lib/public-cors";
-import { withSpan } from "@/lib/tracing";
 import type { CheckAddressPayload, HorizonCheckResult } from "@/types";
 
 export const runtime = "nodejs";
@@ -54,7 +53,13 @@ export async function POST(request: NextRequest) {
     return withPublicCors(
       NextResponse.json(
         { errors: ["Rate limit exceeded. Please try again later."] },
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfter) } }
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimit.retryAfter),
+            ...rateLimitHeaders,
+          },
+        }
       )
     );
   }
@@ -64,7 +69,9 @@ export async function POST(request: NextRequest) {
     const address = body.address?.trim();
 
     if (!address) {
-      return withPublicCors(jsonCheckError(["Address is required"], 400));
+      return withPublicCors(
+        jsonCheckError(["Address is required"], 400, "not_ready", rateLimitHeaders)
+      );
     }
 
     const assetCode = body.asset_code ?? DEFAULT_ASSET.code;
@@ -75,7 +82,7 @@ export async function POST(request: NextRequest) {
     if (!bypass) {
       const cached = checkCache.get(cacheKey) as HorizonCheckResult | null;
       if (cached) {
-        return withPublicCors(jsonCheckResult(cached));
+        return withPublicCors(jsonCheckResult(cached, 200, rateLimitHeaders));
       }
     }
 
@@ -94,10 +101,12 @@ export async function POST(request: NextRequest) {
       checkCache.set(cacheKey, result);
     }
 
-    return withPublicCors(jsonCheckResult(result));
+    return withPublicCors(jsonCheckResult(result, 200, rateLimitHeaders));
   } catch (error) {
     captureException(error, { route: "/api/check", method: "POST" });
-    return withPublicCors(jsonCheckError(["Failed to check address"], 500));
+    return withPublicCors(
+      jsonCheckError(["Failed to check address"], 500, "not_ready", rateLimitHeaders)
+    );
   }
 }
 
