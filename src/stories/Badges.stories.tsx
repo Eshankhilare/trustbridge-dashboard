@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrustlineStatusBadge } from "@/components/TrustlineStatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import type { ReadinessStatus } from "@/types";
 
 const meta: Meta<typeof TrustlineStatusBadge> = {
   title: "Components/Badges",

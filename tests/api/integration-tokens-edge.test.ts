@@ -12,11 +12,15 @@ import { NextRequest } from "next/server";
 // ---------------------------------------------------------------------------
 vi.mock("next-auth", () => ({ getServerSession: vi.fn() }));
 vi.mock("@/lib/horizon", () => ({ checkStellarAddress: vi.fn() }));
-vi.mock("@/lib/rate-limit", () => ({
-  extractClientIp: vi.fn(() => "127.0.0.1"),
-  checkRateLimit: vi.fn(() => ({ allowed: true, retryAfter: 0, remaining: 9 })),
-  resetRateLimit: vi.fn(),
-}));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return {
+    ...actual,
+    extractClientIp: vi.fn(() => "127.0.0.1"),
+    checkRateLimit: vi.fn(() => ({ allowed: true, retryAfter: 0, remaining: 9 })),
+    resetRateLimit: vi.fn(),
+  };
+});
 vi.mock("@/lib/registrations", () => ({
   getDashboardStats: vi.fn(),
   toContributorRow: vi.fn((r: unknown) => r),

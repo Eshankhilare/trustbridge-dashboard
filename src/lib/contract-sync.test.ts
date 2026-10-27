@@ -15,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       update: vi.fn(),
     },
   },
@@ -25,9 +26,27 @@ vi.mock("stellar-sdk", () => ({
     call: mockContractCall,
   })),
   rpc: {
-    Server: vi.fn(),
+    Server: vi.fn().mockImplementation(() => ({
+      simulateTransaction: vi.fn().mockResolvedValue({
+        result: { retval: "mock-retval" },
+      }),
+    })),
+    Api: {
+      isSimulationError: vi.fn().mockReturnValue(false),
+    },
   },
+  Account: vi.fn().mockImplementation(() => ({})),
+  TransactionBuilder: vi.fn().mockImplementation(() => ({
+    addOperation: vi.fn().mockReturnValue({
+      setTimeout: vi.fn().mockReturnValue({
+        build: vi.fn().mockReturnValue({}),
+      }),
+    }),
+  })),
+  nativeToScVal: vi.fn((value: unknown) => value),
   scValToNative: mockScValToNative,
+  Networks: { TESTNET: "Test SDF Network ; September 2015" },
+  xdr: { ScVal: vi.fn() },
 }));
 
 import { recordAuditLog } from "@/lib/audit";
@@ -41,11 +60,14 @@ import {
 // Helper: build a minimal Registration row shape returned by prisma.findMany
 function makeExistingReg(
   stellarAddress: string,
-  githubUsername: string | null = null
+  githubUsername: string | null = null,
+  userId?: string
 ) {
+  const resolvedUserId = userId ?? `user-${stellarAddress}`;
   return {
     id: `id-${stellarAddress}`,
     stellarAddress,
+    userId: resolvedUserId,
     user: { githubUsername },
   };
 }
@@ -198,8 +220,14 @@ describe("contract-sync", () => {
       expect(result.updated).toBe(1);
       expect(result.created).toBe(0);
       expect(result.unchanged).toBe(0);
-      // The update query should have been called
-      expect(prisma.registration.update).toHaveBeenCalledTimes(1);
+      // The linked User row (not the Registration row) carries the username.
+      expect(prisma.user.update).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "user-GEXISTS1ADDRESS" },
+          data: expect.objectContaining({ githubUsername: "alice-new" }),
+        })
+      );
     });
 
     it("does not increment updated when the username is unchanged", async () => {
@@ -242,7 +270,7 @@ describe("contract-sync", () => {
       expect(prisma.user.update).toHaveBeenCalledTimes(1);
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { githubUsername: "alice-new" },
+          where: { id: "user-GEXISTS1ADDRESS" },
           data: expect.objectContaining({ githubUsername: "alice-new" }),
         })
       );
@@ -258,14 +286,16 @@ describe("contract-sync", () => {
       ]);
 
       // Another user already owns the new username
-      vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      vi.mocked(prisma.user.findFirst).mockResolvedValue({
         id: "other-user",
         githubUsername: "alice-new",
       } as never);
 
       const result = await syncContractToPostgres();
 
-      expect(result.updated).toBe(1);
+      // Conflict: counted as unchanged, and the other owner's row is untouched.
+      expect(result.updated).toBe(0);
+      expect(result.unchanged).toBe(1);
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
@@ -408,7 +438,12 @@ describe("contract-sync", () => {
 
     it("records an error when the contract call itself rejects", async () => {
       process.env.SOROBAN_CONTRACT_ID = "CABC123";
-      mockContractCall.mockRejectedValue(new Error("RPC unavailable"));
+      // The read path builds a simulation transaction synchronously, so a
+      // failing contract call surfaces as a synchronous throw (not a
+      // rejected promise) inside `simulateContractRead`.
+      mockContractCall.mockImplementation(() => {
+        throw new Error("RPC unavailable");
+      });
 
       const result = await syncContractToPostgres();
 

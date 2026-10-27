@@ -18,7 +18,7 @@ import { recordTokenAudit } from "@/lib/token-audit";
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Parse the first JSON string passed to console.error. */
+/** Parse the first JSON line written to stderr. */
 function parseErrorLog(spy: ReturnType<typeof vi.spyOn>) {
   expect(spy).toHaveBeenCalled();
   const raw = spy.mock.calls[0][0] as string;
@@ -73,7 +73,7 @@ describe("recordTokenAudit — DB write failure", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    errorSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     vi.mocked(prisma.tokenAuditLog.create).mockRejectedValue(
       new Error("DB connection lost")
     );
@@ -90,7 +90,7 @@ describe("recordTokenAudit — DB write failure", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("emits a structured log via console.error (not a bare two-arg console.error call)", async () => {
+  it("emits a structured log via stderr (not a bare two-arg console.error call)", async () => {
     await recordTokenAudit("user-1", "token_encrypted_at_signin", true);
     // Must be a single JSON-encoded structured log.
     expect(errorSpy).toHaveBeenCalledOnce();
@@ -129,13 +129,13 @@ describe("recordTokenAudit — DB write failure", () => {
   it("includes userId in details", async () => {
     await recordTokenAudit("user-42", "token_decrypted", true);
     const log = parseErrorLog(errorSpy);
-    expect((log.details as Record<string, unknown>).userId).toBe("user-42");
+    expect(log.userId).toBe("user-42");
   });
 
   it("includes action in details", async () => {
     await recordTokenAudit("user-1", "token_decrypt_failed", false);
     const log = parseErrorLog(errorSpy);
-    expect((log.details as Record<string, unknown>).action).toBe(
+    expect(log.action).toBe(
       "token_decrypt_failed"
     );
   });
@@ -143,13 +143,14 @@ describe("recordTokenAudit — DB write failure", () => {
   it("includes success flag in details", async () => {
     await recordTokenAudit("user-1", "token_encryption_skipped", false);
     const log = parseErrorLog(errorSpy);
-    expect((log.details as Record<string, unknown>).success).toBe(false);
+    expect(log.success).toBe(false);
   });
 
   it("includes errorMessage as a string in details", async () => {
     await recordTokenAudit("user-1", "token_encrypted_at_signin", true);
     const log = parseErrorLog(errorSpy);
-    const details = log.details as Record<string, unknown>;
+    // The flat structured-log shape merges metadata at the top level.
+    const details = log as Record<string, unknown>;
     expect(typeof details.errorMessage).toBe("string");
     expect(details.errorMessage).toBe("DB connection lost");
   });
@@ -158,7 +159,8 @@ describe("recordTokenAudit — DB write failure", () => {
     vi.mocked(prisma.tokenAuditLog.create).mockRejectedValue("string error");
     await recordTokenAudit("user-1", "token_encrypted_at_signin", true);
     const log = parseErrorLog(errorSpy);
-    const details = log.details as Record<string, unknown>;
+    // The flat structured-log shape merges metadata at the top level.
+    const details = log as Record<string, unknown>;
     expect(typeof details.errorMessage).toBe("string");
     expect(details.errorMessage).toBe("string error");
   });
@@ -166,7 +168,8 @@ describe("recordTokenAudit — DB write failure", () => {
   it("does NOT include the raw error object in details", async () => {
     await recordTokenAudit("user-1", "token_encrypted_at_signin", true);
     const log = parseErrorLog(errorSpy);
-    const details = log.details as Record<string, unknown>;
+    // The flat structured-log shape merges metadata at the top level.
+    const details = log as Record<string, unknown>;
     // A raw Error serialises to {} — any such key is a red flag.
     expect(details).not.toHaveProperty("error");
     expect(details).not.toHaveProperty("err");

@@ -60,7 +60,9 @@ describe("Address Change Anomaly Detector", () => {
     expect(status.isAnomaly).toBe(true);
     expect(recordAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "anomaly.mass_address_changes",
+        // Multi-signal alert action (issue #574); supersedes the old
+        // single-signal "anomaly.mass_address_changes" action.
+        action: "anomaly.address_anomaly_detected",
         actorId: "user-1",
         actorLogin: "admin1",
       })

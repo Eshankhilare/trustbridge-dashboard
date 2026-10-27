@@ -35,6 +35,7 @@ import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
+import { resetRateLimit } from "@/lib/rate-limit";
 
 const sameOriginHeaders: Record<string, string> = {
   origin: "http://localhost:3000",
@@ -164,6 +165,9 @@ describe("POST /api/register — error codes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // The route rate-limits per IP with process-local state; reset between
+    // tests so earlier POSTs in this file cannot 429 later ones.
+    resetRateLimit();
     vi.mocked(prisma.registration.findFirst).mockResolvedValue(null as never);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue(null as never);
     vi.mocked(checkStellarAddress).mockResolvedValue({

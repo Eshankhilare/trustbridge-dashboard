@@ -12,6 +12,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+vi.mock("@/lib/i18n-context", () => ({
+  useI18n: () => ({ locale: "en", setLocale: vi.fn() }),
+}));
+
 // Mock global fetch for background queries
 function defaultFetch(url: string) {
   if (url.includes("/api/settings/freeze") || url.includes("/api/freeze-status")) {

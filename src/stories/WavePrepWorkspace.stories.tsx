@@ -16,6 +16,8 @@ const mockContributors: ContributorRow[] = [
     verified: true,
     lastCheckedAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
     banned: false,
+    usdcBalance: "0",
+    horizonLatencyMs: null,
   },
   {
     id: "reg-2",
@@ -30,6 +32,8 @@ const mockContributors: ContributorRow[] = [
     verified: false,
     lastCheckedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
     banned: false,
+    usdcBalance: "0",
+    horizonLatencyMs: null,
   },
   {
     id: "reg-3",
@@ -44,6 +48,8 @@ const mockContributors: ContributorRow[] = [
     verified: false,
     lastCheckedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
     banned: false,
+    usdcBalance: "0",
+    horizonLatencyMs: null,
   },
 ];
 

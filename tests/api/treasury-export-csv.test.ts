@@ -4,11 +4,16 @@ import { NextRequest } from "next/server";
 vi.mock("@/lib/api-auth", () => ({
   requireOperator: vi.fn(),
 }));
-vi.mock("@/lib/api-key-auth", () => ({
-  API_KEY_RATE_LIMIT: { maxRequests: 60 },
-  buildRateLimitHeaders: vi.fn().mockReturnValue({}),
-  requireApiKeyScope: vi.fn(),
-}));
+vi.mock("@/lib/api-key-auth", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/api-key-auth")>();
+  return {
+    ...actual,
+    API_KEY_RATE_LIMIT: { maxRequests: 60 },
+    buildRateLimitHeaders: vi.fn().mockReturnValue({}),
+    authenticateApiKey: vi.fn(),
+  };
+});
 vi.mock("@/lib/audit", () => ({ recordAuditLog: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -21,7 +26,7 @@ vi.mock("@/lib/prisma", () => ({
 
 import { POST } from "@/app/api/treasury/export/route";
 import { requireOperator } from "@/lib/api-auth";
-import { requireApiKeyScope } from "@/lib/api-key-auth";
+import { authenticateApiKey } from "@/lib/api-key-auth";
 import { prisma } from "@/lib/prisma";
 
 const session = {
@@ -43,7 +48,7 @@ function request(body: unknown, origin = "http://localhost:3000") {
 describe("POST /api/treasury/export CSV", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+    vi.mocked(authenticateApiKey).mockResolvedValue(null);
     vi.mocked(prisma.registration.count).mockResolvedValue(1);
     vi.mocked(prisma.registration.findMany).mockResolvedValue([
       {
@@ -82,12 +87,12 @@ describe("POST /api/treasury/export CSV", () => {
 
     expect(response.status).toBe(403);
     expect(requireOperator).not.toHaveBeenCalled();
-    expect(requireApiKeyScope).not.toHaveBeenCalled();
+    expect(authenticateApiKey).not.toHaveBeenCalled();
   });
 
   it("rejects callers without an operator session or export API key", async () => {
     vi.mocked(requireOperator).mockResolvedValue(null);
-    vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+    vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
     const response = await POST(request({ format: "csv" }));
 

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import * as analyticsNS from "@/lib/analytics";
 
 vi.mock("posthog-js", () => ({
   default: {
@@ -61,7 +62,7 @@ describe("analytics — server-side track helpers", () => {
       // Re-require so the module picks up the cleared env.
       // Because vitest caches modules we test the exported functions directly;
       // they must not throw even with no key configured.
-      const { trackServerRegistrationCreated } = require("@/lib/analytics");
+      const { trackServerRegistrationCreated } = analyticsNS;
       expect(() =>
         trackServerRegistrationCreated({ userId: "u1", stellarAddress: "GABC" })
       ).not.toThrow();
@@ -70,7 +71,7 @@ describe("analytics — server-side track helpers", () => {
 
   it("trackServerRegistrationUpdated does not throw without POSTHOG_API_KEY", () => {
     withEnv({ POSTHOG_API_KEY: undefined }, () => {
-      const { trackServerRegistrationUpdated } = require("@/lib/analytics");
+      const { trackServerRegistrationUpdated } = analyticsNS;
       expect(() =>
         trackServerRegistrationUpdated({
           userId: "u1",
@@ -82,7 +83,7 @@ describe("analytics — server-side track helpers", () => {
 
   it("trackServerCsvExported does not throw without POSTHOG_API_KEY", () => {
     withEnv({ POSTHOG_API_KEY: undefined }, () => {
-      const { trackServerCsvExported } = require("@/lib/analytics");
+      const { trackServerCsvExported } = analyticsNS;
       expect(() =>
         trackServerCsvExported({ rowCount: 42, triggeredBy: "maintainer" })
       ).not.toThrow();
@@ -91,7 +92,7 @@ describe("analytics — server-side track helpers", () => {
 
   it("trackServerBatchRecheckStarted does not throw without POSTHOG_API_KEY", () => {
     withEnv({ POSTHOG_API_KEY: undefined }, () => {
-      const { trackServerBatchRecheckStarted } = require("@/lib/analytics");
+      const { trackServerBatchRecheckStarted } = analyticsNS;
       expect(() =>
         trackServerBatchRecheckStarted({ totalRegistrations: 10, initiatedBy: "u1" })
       ).not.toThrow();
@@ -99,14 +100,7 @@ describe("analytics — server-side track helpers", () => {
   });
 
   it("server track helpers accept undefined properties without throwing", () => {
-    const {
-      trackServerRegistrationCreated,
-      trackServerRegistrationUpdated,
-      trackServerCsvExported,
-      trackServerBatchRecheckStarted,
-      trackServerDisputeOpened,
-      trackServerDisputeClosed,
-    } = require("@/lib/analytics");
+    const { trackServerRegistrationCreated, trackServerRegistrationUpdated, trackServerCsvExported, trackServerBatchRecheckStarted, trackServerDisputeOpened, trackServerDisputeClosed } = analyticsNS;
 
     expect(() => trackServerRegistrationCreated()).not.toThrow();
     expect(() => trackServerRegistrationUpdated()).not.toThrow();
@@ -127,45 +121,45 @@ describe("analytics — client-side track helpers", () => {
   });
 
   it("trackRegistrationCreated does not throw", () => {
-    const { trackRegistrationCreated } = require("@/lib/analytics");
+    const { trackRegistrationCreated } = analyticsNS;
     expect(() =>
       trackRegistrationCreated({ userId: "u1", stellarAddress: "GABC" })
     ).not.toThrow();
   });
 
   it("trackRegistrationUpdated does not throw", () => {
-    const { trackRegistrationUpdated } = require("@/lib/analytics");
+    const { trackRegistrationUpdated } = analyticsNS;
     expect(() =>
       trackRegistrationUpdated({ userId: "u1", fieldsChanged: ["stellarAddress"] })
     ).not.toThrow();
   });
 
   it("trackBatchRecheckStarted does not throw", () => {
-    const { trackBatchRecheckStarted } = require("@/lib/analytics");
+    const { trackBatchRecheckStarted } = analyticsNS;
     expect(() =>
       trackBatchRecheckStarted({ totalRegistrations: 5 })
     ).not.toThrow();
   });
 
   it("trackCsvExported does not throw", () => {
-    const { trackCsvExported } = require("@/lib/analytics");
+    const { trackCsvExported } = analyticsNS;
     expect(() => trackCsvExported({ rowCount: 99 })).not.toThrow();
   });
 
   it("trackRecheckCompleted does not throw", () => {
-    const { trackRecheckCompleted } = require("@/lib/analytics");
+    const { trackRecheckCompleted } = analyticsNS;
     expect(() =>
       trackRecheckCompleted({ totalChecked: 10, changed: 2, durationMs: 1500 })
     ).not.toThrow();
   });
 
   it("identifyUser does not throw", () => {
-    const { identifyUser } = require("@/lib/analytics");
+    const { identifyUser } = analyticsNS;
     expect(() => identifyUser("user-123", { plan: "free" })).not.toThrow();
   });
 
   it("resetAnalytics does not throw", () => {
-    const { resetAnalytics } = require("@/lib/analytics");
+    const { resetAnalytics } = analyticsNS;
     expect(() => resetAnalytics()).not.toThrow();
   });
 });
@@ -177,7 +171,7 @@ describe("analytics — client-side track helpers", () => {
 describe("analytics — adapter selection guards", () => {
   it("does not log to console in test environment (no adapter side-effects)", () => {
     const consoleSpy = vi.spyOn(console, "log");
-    const { trackRegistrationCreated } = require("@/lib/analytics");
+    const { trackRegistrationCreated } = analyticsNS;
     trackRegistrationCreated({ userId: "u1" });
     // In test env (NODE_ENV=test) neither ConsoleAdapter nor PostHogAdapter
     // should be selected — the call must be a no-op.
@@ -188,7 +182,7 @@ describe("analytics — adapter selection guards", () => {
   });
 
   it("exports all expected server-track symbols", () => {
-    const analytics = require("@/lib/analytics");
+    const analytics = analyticsNS;
     expect(typeof analytics.trackServerRegistrationCreated).toBe("function");
     expect(typeof analytics.trackServerRegistrationUpdated).toBe("function");
     expect(typeof analytics.trackServerCsvExported).toBe("function");
@@ -198,7 +192,7 @@ describe("analytics — adapter selection guards", () => {
   });
 
   it("exports all expected client-track symbols", () => {
-    const analytics = require("@/lib/analytics");
+    const analytics = analyticsNS;
     expect(typeof analytics.trackRegistrationCreated).toBe("function");
     expect(typeof analytics.trackRegistrationUpdated).toBe("function");
     expect(typeof analytics.trackBatchRecheckStarted).toBe("function");
@@ -267,13 +261,13 @@ describe("analytics — identifyServerUser (issue #516)", () => {
   });
 
   it("identifyServerUser is exported", () => {
-    const analytics = require("@/lib/analytics");
+    const analytics = analyticsNS;
     expect(typeof analytics.identifyServerUser).toBe("function");
   });
 
   it("identifyServerUser does not throw when POSTHOG_API_KEY is absent", () => {
     withEnv({ POSTHOG_API_KEY: undefined }, () => {
-      const { identifyServerUser } = require("@/lib/analytics");
+      const { identifyServerUser } = analyticsNS;
       expect(() =>
         identifyServerUser("user-123", { maintainerOrgId: "org-abc" })
       ).not.toThrow();
@@ -287,7 +281,7 @@ describe("analytics — identifyServerUser (issue #516)", () => {
 
     withEnv({ POSTHOG_API_KEY: "test-key" }, () => {
       vi.resetModules();
-      const { identifyServerUser } = require("@/lib/analytics");
+      const { identifyServerUser } = analyticsNS;
       identifyServerUser("anonymous", { maintainerOrgId: "org-abc" });
     });
 
@@ -302,7 +296,7 @@ describe("analytics — identifyServerUser (issue #516)", () => {
 
     withEnv({ POSTHOG_API_KEY: "test-key" }, () => {
       vi.resetModules();
-      const { identifyServerUser } = require("@/lib/analytics");
+      const { identifyServerUser } = analyticsNS;
       identifyServerUser("", { maintainerOrgId: "org-abc" });
     });
 
@@ -319,14 +313,29 @@ describe("analytics — identifyServerUser (issue #516)", () => {
         return new Response("{}", { status: 200 });
       });
 
-    withEnv({ POSTHOG_API_KEY: "server-key", POSTHOG_HOST: undefined }, () => {
+    withEnv({ POSTHOG_API_KEY: "server-key", POSTHOG_HOST: undefined }, () => {});
+    {
+      // Fresh module evaluation so the lazy server adapter picks up the key
+      // (it is cached per module instance). Env must stay set until after
+      // the call, so withEnv cannot wrap the async import — manage it here.
+      const prevKey = process.env.POSTHOG_API_KEY;
+      const prevHost = process.env.POSTHOG_HOST;
+      process.env.POSTHOG_API_KEY = "server-key";
+      delete process.env.POSTHOG_HOST;
       vi.resetModules();
-      const { identifyServerUser } = require("@/lib/analytics");
-      identifyServerUser("user-456", {
-        maintainerOrgId: "org-stellar",
-        githubUsername: "alice",
-      });
-    });
+      try {
+        const { identifyServerUser } = await import("@/lib/analytics");
+        identifyServerUser("user-456", {
+          maintainerOrgId: "org-stellar",
+          githubUsername: "alice",
+        });
+      } finally {
+        if (prevKey === undefined) delete process.env.POSTHOG_API_KEY;
+        else process.env.POSTHOG_API_KEY = prevKey;
+        if (prevHost === undefined) delete process.env.POSTHOG_HOST;
+        else process.env.POSTHOG_HOST = prevHost;
+      }
+    }
 
     await new Promise((r) => setTimeout(r, 0));
 
@@ -352,11 +361,19 @@ describe("analytics — identifyServerUser (issue #516)", () => {
         return new Response("{}", { status: 200 });
       });
 
-    withEnv({ POSTHOG_API_KEY: "server-key-2" }, () => {
+    withEnv({ POSTHOG_API_KEY: "server-key-2" }, () => {});
+    {
+      const prevKey = process.env.POSTHOG_API_KEY;
+      process.env.POSTHOG_API_KEY = "server-key-2";
       vi.resetModules();
-      const { identifyServerUser } = require("@/lib/analytics");
-      identifyServerUser("user-789", { role: "maintainer" });
-    });
+      try {
+        const { identifyServerUser } = await import("@/lib/analytics");
+        identifyServerUser("user-789", { role: "maintainer" });
+      } finally {
+        if (prevKey === undefined) delete process.env.POSTHOG_API_KEY;
+        else process.env.POSTHOG_API_KEY = prevKey;
+      }
+    }
 
     await new Promise((r) => setTimeout(r, 0));
 
@@ -375,7 +392,7 @@ describe("analytics — identifyServerUser (issue #516)", () => {
 
     withEnv({ POSTHOG_API_KEY: "server-key-3" }, () => {
       vi.resetModules();
-      const { identifyServerUser } = require("@/lib/analytics");
+      const { identifyServerUser } = analyticsNS;
       expect(() =>
         identifyServerUser("user-abc", { maintainerOrgId: "org-x" })
       ).not.toThrow();

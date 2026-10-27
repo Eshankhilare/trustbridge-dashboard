@@ -100,23 +100,32 @@ describe("withSpan (disabled)", () => {
 describe("withSpan (enabled)", () => {
   beforeEach(() => {
     process.env.OTEL_TRACES_ENABLED = "1";
-    process.env.DEBUG = "1";
+    // The structured logger only emits debug spans for DEBUG=true.
+    process.env.DEBUG = "true";
   });
 
   it("returns the wrapped value and logs a span", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    // Spans go through the structured logger (stdout), not console.log.
+    const writeSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
 
     await expect(withSpan("prisma.User.findMany", () => "ok")).resolves.toBe(
       "ok",
     );
 
-    const payloads = logSpy.mock.calls.map((c) => String(c[0]));
+    const payloads = writeSpy.mock.calls.map((c) => String(c[0]));
     expect(payloads.some((p) => p.includes('"span"'))).toBe(true);
     expect(payloads.some((p) => p.includes("prisma.User.findMany"))).toBe(true);
+
+    writeSpy.mockRestore();
   });
 
   it("propagates errors and never leaks an address into the log", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Error spans go through the structured logger (stderr).
+    const errSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
 
     await expect(
       withSpan(

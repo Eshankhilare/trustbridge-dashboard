@@ -227,8 +227,11 @@ describe("AddressQr", () => {
       // Reset mock to succeed
       vi.mocked(QRCode.toDataURL).mockResolvedValueOnce(dataUrl);
 
-      // Re-render with same address should clear error
-      rerender(<AddressQr address={validAddress} />);
+      // Re-render with a *different* address: regeneration (and error
+      // clearing) only runs when the normalized address changes.
+      rerender(
+        <AddressQr address="GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" />
+      );
 
       await waitFor(() => {
         expect(screen.queryByTestId("address-qr-error")).not.toBeInTheDocument();

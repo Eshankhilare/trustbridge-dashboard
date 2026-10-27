@@ -30,11 +30,16 @@ vi.mock("next-auth", () => ({
   getServerSession: vi.fn(),
 }));
 
-vi.mock("@/lib/api-key-auth", () => ({
-  API_KEY_RATE_LIMIT: { maxRequests: 60 },
-  buildRateLimitHeaders: vi.fn().mockReturnValue({}),
-  requireApiKeyScope: vi.fn(),
-}));
+vi.mock("@/lib/api-key-auth", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/api-key-auth")>();
+  return {
+    ...actual,
+    API_KEY_RATE_LIMIT: { maxRequests: 60 },
+    buildRateLimitHeaders: vi.fn().mockReturnValue({}),
+    authenticateApiKey: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/readiness", () => ({
   computeReadiness: vi.fn(),
@@ -60,7 +65,7 @@ import { GET, POST } from "@/app/api/treasury/export/route";
 import { requireOperator } from "@/lib/api-auth";
 import { authOptions } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
-import { buildRateLimitHeaders, requireApiKeyScope } from "@/lib/api-key-auth";
+import { buildRateLimitHeaders, authenticateApiKey } from "@/lib/api-key-auth";
 import { prisma } from "@/lib/prisma";
 import { computeReadiness } from "@/lib/readiness";
 import { recordAuditLog } from "@/lib/audit";
@@ -143,7 +148,9 @@ describe("GET /api/treasury/export", () => {
     it("returns 403 when unauthenticated", async () => {
       vi.mocked(getServerSession).mockResolvedValue(null);
 
-      const res = await GET();
+      const res = await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
 
       expect(res.status).toBe(403);
       const json = await res.json();
@@ -156,7 +163,9 @@ describe("GET /api/treasury/export", () => {
         user: { id: "viewer-1", isMaintainer: false },
       } as never);
 
-      const res = await GET();
+      const res = await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
 
       expect(res.status).toBe(403);
     });
@@ -166,7 +175,9 @@ describe("GET /api/treasury/export", () => {
       vi.mocked(prisma.registration.findMany).mockResolvedValue([]);
       vi.mocked(computeReadiness).mockReturnValue("ready");
 
-      const res = await GET();
+      const res = await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
 
       expect(res.status).toBe(200);
       expect(getServerSession).toHaveBeenCalledWith(authOptions);
@@ -186,7 +197,9 @@ describe("GET /api/treasury/export", () => {
         funded ? "ready" : "not_ready"
       );
 
-      const res = await GET();
+      const res = await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
       const json = await res.json();
 
       expect(res.status).toBe(200);
@@ -202,7 +215,9 @@ describe("GET /api/treasury/export", () => {
       vi.mocked(prisma.registration.findMany).mockResolvedValue(twoRegistrations as never);
       vi.mocked(computeReadiness).mockReturnValue("ready");
 
-      await GET();
+      await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
 
       expect(recordAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -216,7 +231,9 @@ describe("GET /api/treasury/export", () => {
       vi.mocked(prisma.registration.findMany).mockResolvedValue([]);
       vi.mocked(computeReadiness).mockReturnValue("ready");
 
-      const res = await GET();
+      const res = await GET(
+        new NextRequest("http://localhost:3000/api/treasury/export")
+      );
       const json = await res.json();
 
       expect(json.exportedBy).toBe("operator@test.com");
@@ -240,7 +257,7 @@ describe("POST /api/treasury/export", () => {
   describe("Authorization", () => {
     it("returns 401 when unauthenticated (no session or API key)", async () => {
       vi.mocked(requireOperator).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await POST(makePostRequest({ format: "json" }));
 
@@ -252,7 +269,7 @@ describe("POST /api/treasury/export", () => {
 
     it("returns 401 when the API key is missing or invalid", async () => {
       vi.mocked(requireOperator).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await POST(
         makePostRequest({ format: "json" }, "http://localhost:3000", "Bearer invalid")
@@ -274,13 +291,13 @@ describe("POST /api/treasury/export", () => {
 
     it("allows an API key with export:read scope", async () => {
       vi.mocked(requireOperator).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue({
+      vi.mocked(authenticateApiKey).mockResolvedValue({
         id: "key-1",
         name: "load-test",
         scopes: ["export:read"],
         createdById: "operator-1",
         maintainerOrgId: "org-1",
-      });
+      } as never);
       vi.mocked(prisma.registration.findMany).mockResolvedValue([]);
       vi.mocked(computeReadiness).mockReturnValue("ready");
 
@@ -289,10 +306,7 @@ describe("POST /api/treasury/export", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(requireApiKeyScope).toHaveBeenCalledWith(
-        expect.anything(),
-        "export:read"
-      );
+      expect(authenticateApiKey).toHaveBeenCalledTimes(1);
       expect(recordAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           action: "treasury.export",
@@ -304,10 +318,10 @@ describe("POST /api/treasury/export", () => {
 
     it("returns 429 when the API key is rate limited", async () => {
       vi.mocked(requireOperator).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue({
+      vi.mocked(authenticateApiKey).mockResolvedValue({
         rateLimited: true,
         result: { allowed: false, retryAfter: 10, remaining: 0 },
-      });
+      } as never);
 
       const res = await POST(
         makePostRequest({ format: "json" }, "http://localhost:3000", "Bearer test-key")
@@ -398,7 +412,7 @@ describe("POST /api/treasury/export", () => {
       const res = await POST(makePostRequest({ format: "csv" }));
 
       expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toBe("text/csv");
+      expect(res.headers.get("Content-Type")).toContain("text/csv");
       expect(res.headers.get("Content-Disposition")).toMatch(
         /^attachment; filename="treasury-export-.+\.csv"$/
       );

@@ -18,7 +18,7 @@ import { NextRequest } from "next/server";
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/api-auth", () => ({
-  requireMaintainerSession: vi.fn(),
+  requireOperator: vi.fn(),
 }));
 
 vi.mock("@/lib/audit", () => ({
@@ -29,7 +29,7 @@ vi.mock("@/lib/audit", () => ({
 // for real so the summary assertions exercise the actual summariseAuditLog
 // implementation rather than a stub.
 
-import { requireMaintainerSession } from "@/lib/api-auth";
+import { requireOperator } from "@/lib/api-auth";
 import { getRecentAuditLog } from "@/lib/audit";
 import type { AuditLogEntry } from "@/types";
 import type { Session } from "next-auth";
@@ -85,7 +85,7 @@ describe("GET /api/audit — auth gating", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 403 when there is no session at all", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(null);
+    vi.mocked(requireOperator).mockResolvedValue(null);
 
     const res = await GET(request("http://localhost/api/audit"));
     expect(res.status).toBe(403);
@@ -94,14 +94,14 @@ describe("GET /api/audit — auth gating", () => {
   });
 
   it("does NOT call getRecentAuditLog when auth fails", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(null);
+    vi.mocked(requireOperator).mockResolvedValue(null);
 
     await GET(request("http://localhost/api/audit"));
     expect(getRecentAuditLog).not.toHaveBeenCalled();
   });
 
   it("proceeds for a valid maintainer session", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue([]);
 
     const res = await GET(request("http://localhost/api/audit"));
@@ -117,7 +117,7 @@ describe("GET /api/audit — limit behaviour", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("uses the default limit of 50 when no limit param is provided", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(50));
 
     await GET(request("http://localhost/api/audit"));
@@ -125,7 +125,7 @@ describe("GET /api/audit — limit behaviour", () => {
   });
 
   it("passes a custom limit when the limit param is a positive integer", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(10));
 
     await GET(request("http://localhost/api/audit?limit=10"));
@@ -133,7 +133,7 @@ describe("GET /api/audit — limit behaviour", () => {
   });
 
   it("uses the default when the limit param is 0 (invalid)", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(50));
 
     await GET(request("http://localhost/api/audit?limit=0"));
@@ -142,7 +142,7 @@ describe("GET /api/audit — limit behaviour", () => {
   });
 
   it("uses the default when the limit param is negative", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(50));
 
     await GET(request("http://localhost/api/audit?limit=-5"));
@@ -150,7 +150,7 @@ describe("GET /api/audit — limit behaviour", () => {
   });
 
   it("uses the default when the limit param is non-numeric", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(50));
 
     await GET(request("http://localhost/api/audit?limit=abc"));
@@ -158,7 +158,7 @@ describe("GET /api/audit — limit behaviour", () => {
   });
 
   it("passes limit=200 when explicitly requested (library-enforced ceiling)", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(200));
 
     await GET(request("http://localhost/api/audit?limit=200"));
@@ -167,7 +167,7 @@ describe("GET /api/audit — limit behaviour", () => {
 
   it("passes limit=300 as-is to getRecentAuditLog (the lib caps at 200 internally)", async () => {
     // The route itself does not re-cap; getRecentAuditLog owns that boundary.
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(makeEntries(200));
 
     await GET(request("http://localhost/api/audit?limit=300"));
@@ -184,7 +184,7 @@ describe("GET /api/audit — response payload", () => {
 
   it("returns an entries array in the response", async () => {
     const entries = makeEntries(3, "registration.create");
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(entries);
 
     const res = await GET(request("http://localhost/api/audit"));
@@ -196,7 +196,7 @@ describe("GET /api/audit — response payload", () => {
 
   it("includes a summary object with a total count", async () => {
     const entries = makeEntries(7, "recheck.single");
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(entries);
 
     const res = await GET(request("http://localhost/api/audit"));
@@ -212,7 +212,7 @@ describe("GET /api/audit — response payload", () => {
       ...makeEntries(2, "recheck.single"),
       ...makeEntries(1, "export.csv"),
     ];
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue(entries);
 
     const res = await GET(request("http://localhost/api/audit"));
@@ -224,7 +224,7 @@ describe("GET /api/audit — response payload", () => {
   });
 
   it("returns total=0 and empty byAction when there are no entries", async () => {
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue([]);
 
     const res = await GET(request("http://localhost/api/audit"));
@@ -242,7 +242,7 @@ describe("GET /api/audit — response payload", () => {
       targetId: "reg-7",
       targetLabel: "GABCDE",
     });
-    vi.mocked(requireMaintainerSession).mockResolvedValue(MAINTAINER_SESSION);
+    vi.mocked(requireOperator).mockResolvedValue(MAINTAINER_SESSION);
     vi.mocked(getRecentAuditLog).mockResolvedValue([entry]);
 
     const res = await GET(request("http://localhost/api/audit"));

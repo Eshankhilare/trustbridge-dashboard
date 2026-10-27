@@ -18,11 +18,16 @@ vi.mock("@/lib/api-auth", () => ({
   requireMaintainerSession: vi.fn(),
 }));
 
-vi.mock("@/lib/api-key-auth", () => ({
-  requireApiKeyScope: vi.fn(),
-  buildRateLimitHeaders: vi.fn().mockReturnValue({}),
-  API_KEY_RATE_LIMIT: { windowMs: 60_000, maxRequests: 60 },
-}));
+vi.mock("@/lib/api-key-auth", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/api-key-auth")>();
+  return {
+    ...actual,
+    authenticateApiKey: vi.fn(),
+    buildRateLimitHeaders: vi.fn().mockReturnValue({}),
+    API_KEY_RATE_LIMIT: { windowMs: 60_000, maxRequests: 60 },
+  };
+});
 
 vi.mock("@/lib/registrations", () => ({
   getContributors: vi.fn(),
@@ -45,7 +50,7 @@ vi.mock("@/lib/csv", () => ({
 import { GET as csvGET } from "@/app/api/contributors/export/csv/route";
 import { GET as jsonGET } from "@/app/api/contributors/export/json/route";
 import { requireMaintainerSession } from "@/lib/api-auth";
-import { requireApiKeyScope } from "@/lib/api-key-auth";
+import { authenticateApiKey } from "@/lib/api-key-auth";
 import { getContributors } from "@/lib/registrations";
 import { recordAuditLog } from "@/lib/audit";
 import { buildContributorsCsv, getContributorsCsvFilename } from "@/lib/csv-export";
@@ -112,7 +117,7 @@ describe("GET /api/contributors/export/csv", () => {
   describe("Authorization", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await csvGET(makeRequest());
 
@@ -124,7 +129,7 @@ describe("GET /api/contributors/export/csv", () => {
 
     it("denies contributor export before reading or serializing data", async () => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await csvGET(makeRequest());
 
@@ -161,7 +166,7 @@ describe("GET /api/contributors/export/csv", () => {
   describe("Response Shape", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("returns CSV with correct headers", async () => {
@@ -258,7 +263,7 @@ describe("GET /api/contributors/export/csv", () => {
   describe("Audit Logging", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("records successful export in audit log", async () => {
@@ -312,7 +317,7 @@ describe("GET /api/contributors/export/csv", () => {
   describe("Error Handling", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("returns 500 on database error", async () => {
@@ -356,7 +361,7 @@ describe("GET /api/contributors/export/json", () => {
   describe("Authorization", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await jsonGET(makeRequest());
 
@@ -368,7 +373,7 @@ describe("GET /api/contributors/export/json", () => {
 
     it("denies contributor export before reading or serializing data", async () => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(null);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
       const res = await jsonGET(makeRequest());
 
@@ -407,7 +412,7 @@ describe("GET /api/contributors/export/json", () => {
   describe("Response Shape", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("returns JSON with correct headers", async () => {
@@ -476,7 +481,7 @@ describe("GET /api/contributors/export/json", () => {
   describe("Audit Logging", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("records successful export in audit log", async () => {
@@ -530,7 +535,7 @@ describe("GET /api/contributors/export/json", () => {
   describe("Error Handling", () => {
     beforeEach(() => {
       vi.mocked(requireMaintainerSession).mockResolvedValue(mockSession as never);
-      vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
     });
 
     it("returns 500 on database error", async () => {
@@ -578,7 +583,7 @@ describe("GET /api/contributors/export/csv — API key auth", () => {
   });
 
   it("returns 200 when a valid export:read API key is provided", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(mockApiKey as never);
+    vi.mocked(authenticateApiKey).mockResolvedValue(mockApiKey as never);
     vi.mocked(getContributors).mockResolvedValue({
       contributors: mockContributors,
       total: 3,
@@ -592,7 +597,7 @@ describe("GET /api/contributors/export/csv — API key auth", () => {
   });
 
   it("uses api-key:<name> as actorLogin in audit log", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(mockApiKey as never);
+    vi.mocked(authenticateApiKey).mockResolvedValue(mockApiKey as never);
     vi.mocked(getContributors).mockResolvedValue({
       contributors: mockContributors,
       total: 3,
@@ -612,7 +617,7 @@ describe("GET /api/contributors/export/csv — API key auth", () => {
   });
 
   it("returns 429 when the IP is rate-limited", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue({
+    vi.mocked(authenticateApiKey).mockResolvedValue({
       rateLimited: true,
       result: { allowed: false, retryAfter: 30, remaining: 0 },
     } as never);
@@ -623,7 +628,7 @@ describe("GET /api/contributors/export/csv — API key auth", () => {
   });
 
   it("returns 401 when the API key is invalid or revoked", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+    vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
     const res = await csvGET(makeRequest());
 
@@ -652,7 +657,7 @@ describe("GET /api/contributors/export/json — API key auth", () => {
   });
 
   it("returns 200 when a valid export:read API key is provided", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(mockApiKey as never);
+    vi.mocked(authenticateApiKey).mockResolvedValue(mockApiKey as never);
     vi.mocked(getContributors).mockResolvedValue({
       contributors: mockContributors,
       total: 3,
@@ -666,7 +671,7 @@ describe("GET /api/contributors/export/json — API key auth", () => {
   });
 
   it("uses api-key:<name> as actorLogin in audit log", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(mockApiKey as never);
+    vi.mocked(authenticateApiKey).mockResolvedValue(mockApiKey as never);
     vi.mocked(getContributors).mockResolvedValue({
       contributors: mockContributors,
       total: 3,
@@ -686,7 +691,7 @@ describe("GET /api/contributors/export/json — API key auth", () => {
   });
 
   it("returns 429 when the IP is rate-limited", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue({
+    vi.mocked(authenticateApiKey).mockResolvedValue({
       rateLimited: true,
       result: { allowed: false, retryAfter: 45, remaining: 0 },
     } as never);
@@ -697,7 +702,7 @@ describe("GET /api/contributors/export/json — API key auth", () => {
   });
 
   it("returns 401 when the API key is missing or invalid", async () => {
-    vi.mocked(requireApiKeyScope).mockResolvedValue(null);
+    vi.mocked(authenticateApiKey).mockResolvedValue(null);
 
     const res = await jsonGET(makeRequest("/api/contributors/export/json"));
 

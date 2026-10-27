@@ -32,8 +32,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Import the two exported verifiers ──────────────────────────────────────
 
-import { verifyWebhookSignature } from "@/app/api/webhooks/github-org-membership/route";
-import { verifySignature } from "@/app/api/webhooks/trustbridge-action/route";
+import { verifyWebhookSignature } from "@/lib/github-org-membership-webhook";
+import { verifySignature } from "@/lib/trustbridge-action-webhook";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -87,19 +87,19 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
   it("accepts a correct HMAC-SHA256 signature (happy path)", () => {
     const payload = Buffer.from(JSON.stringify({ action: "added" }));
     const sig = hmacSha256(TEST_SECRET, payload);
-    expect(verifyWebhookSignature(payload, sig)).toBe(true);
+    expect(verifyWebhookSignature(payload.toString("utf8"), sig).ok).toBe(true);
   });
 
   it("accepts a correct signature for an empty payload", () => {
     const payload = Buffer.alloc(0);
     const sig = hmacSha256(TEST_SECRET, payload);
-    expect(verifyWebhookSignature(payload, sig)).toBe(true);
+    expect(verifyWebhookSignature(payload.toString("utf8"), sig).ok).toBe(true);
   });
 
   it("accepts a correct signature for a 100 KB payload", () => {
     const payload = buildPayload(100_000);
     const sig = hmacSha256(TEST_SECRET, payload);
-    expect(verifyWebhookSignature(payload, sig)).toBe(true);
+    expect(verifyWebhookSignature(payload.toString("utf8"), sig).ok).toBe(true);
   });
 
   // ── timing-safe equality ─────────────────────────────────────────────────
@@ -112,7 +112,7 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
     // Sanity: lengths must match for this to test timingSafeEqual, not the length guard.
     expect(correctSig.length).toBe(wrongSig.length);
 
-    expect(verifyWebhookSignature(payload, wrongSig)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), wrongSig).ok).toBe(false);
   });
 
   it("rejects a one-bit-flipped signature (same length, mutation test)", () => {
@@ -121,7 +121,7 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
     const flipped = corruptSignatureOneBit(correctSig);
 
     expect(flipped.length).toBe(correctSig.length); // same length — exercises timingSafeEqual
-    expect(verifyWebhookSignature(payload, flipped)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), flipped).ok).toBe(false);
   });
 
   it("rejects an all-zero-bytes signature of the correct length", () => {
@@ -130,7 +130,7 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
     const correctSig = hmacSha256(TEST_SECRET, payload);
     expect(sig.length).toBe(correctSig.length); // same length, wrong value
 
-    expect(verifyWebhookSignature(payload, sig)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), sig).ok).toBe(false);
   });
 
   // ── length-guard boundary ────────────────────────────────────────────────
@@ -140,7 +140,7 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
     const correctSig = hmacSha256(TEST_SECRET, payload);
     const longerSig = correctSig + "a"; // one extra hex char
 
-    expect(verifyWebhookSignature(payload, longerSig)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), longerSig).ok).toBe(false);
   });
 
   it("rejects a signature one byte shorter than the digest", () => {
@@ -148,7 +148,7 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
     const correctSig = hmacSha256(TEST_SECRET, payload);
     const shorterSig = correctSig.slice(0, -1);
 
-    expect(verifyWebhookSignature(payload, shorterSig)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), shorterSig).ok).toBe(false);
   });
 
   // ── missing / unconfigured secret ────────────────────────────────────────
@@ -156,38 +156,33 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
   it("fails closed when GITHUB_WEBHOOK_SECRET is not set", () => {
     vi.unstubAllEnvs();
     delete process.env[GH_SECRET_ENV];
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const payload = Buffer.from("{}");
     const sig = hmacSha256(TEST_SECRET, payload);
 
-    expect(verifyWebhookSignature(payload, sig)).toBe(false);
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GITHUB_WEBHOOK_SECRET not configured")
-    );
+    // The verifier returns a reason instead of logging (fail-closed, no throw).
+    const result = verifyWebhookSignature(payload.toString("utf8"), sig);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/not configured/i);
   });
 
   it("fails closed when GITHUB_WEBHOOK_SECRET is whitespace only", () => {
     vi.stubEnv(GH_SECRET_ENV, "   ");
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const payload = Buffer.from("{}");
     const sig = hmacSha256(TEST_SECRET, payload);
 
-    expect(verifyWebhookSignature(payload, sig)).toBe(false);
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GITHUB_WEBHOOK_SECRET not configured")
-    );
+    const result = verifyWebhookSignature(payload.toString("utf8"), sig);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/not configured/i);
   });
 
-  it("fails closed and warns when the signature header is undefined", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("fails closed when the signature header is undefined", () => {
     const payload = Buffer.from("{}");
 
-    expect(verifyWebhookSignature(payload, undefined)).toBe(false);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Missing X-Hub-Signature-256")
-    );
+    const result = verifyWebhookSignature(payload.toString("utf8"), null);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/missing.*header/i);
   });
 
   // ── prefix / format ───────────────────────────────────────────────────────
@@ -200,12 +195,12 @@ describe("verifyWebhookSignature (github-org-membership) — timing-safe compare
       .digest("hex");
 
     // Correct hex but missing the required prefix
-    expect(verifyWebhookSignature(payload, rawHex)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), rawHex).ok).toBe(false);
   });
 
   it("rejects an empty string signature", () => {
     const payload = Buffer.from("{}");
-    expect(verifyWebhookSignature(payload, "")).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), "").ok).toBe(false);
   });
 });
 
@@ -368,7 +363,7 @@ describe("Cross-verifier isolation", () => {
     vi.stubEnv(TB_SECRET_ENV, "tb-secret");
 
     // TrustBridge sig should not pass the GitHub verifier
-    expect(verifyWebhookSignature(payload, tbSig)).toBe(false);
+    expect(verifyWebhookSignature(payload.toString("utf8"), tbSig).ok).toBe(false);
     // GitHub sig should not pass the TrustBridge verifier
     expect(verifySignature(payload, ghSig)).toBe(false);
 

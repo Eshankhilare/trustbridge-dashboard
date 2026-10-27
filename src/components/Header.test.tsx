@@ -10,6 +10,7 @@ import React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mockSignIn = vi.fn();
 const mockSignOut = vi.fn();
@@ -36,6 +37,10 @@ vi.mock("next-themes", () => ({
     theme: mockTheme,
     setTheme: mockSetTheme,
   }),
+}));
+
+vi.mock("@/lib/i18n-context", () => ({
+  useI18n: () => ({ locale: "en", setLocale: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -77,6 +82,18 @@ function setMaintainerSession() {
   };
 }
 
+// Header embeds NotificationBell (react-query), so every render needs a client.
+function renderHeader() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Header />
+    </QueryClientProvider>
+  );
+}
+
 async function openMobileMenu() {
   const user = userEvent.setup();
   await user.click(
@@ -93,7 +110,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("shows the hamburger control for opening the drawer", () => {
-    render(<Header />);
+    renderHeader();
 
     expect(
       screen.getByRole("button", { name: "Open navigation menu" })
@@ -101,7 +118,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("keeps Sign in visible in the header when signed out", () => {
-    render(<Header />);
+    renderHeader();
 
     expect(
       screen.getByRole("button", { name: /sign in with github/i })
@@ -109,7 +126,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("opens the drawer with primary nav links", async () => {
-    render(<Header />);
+    renderHeader();
     await openMobileMenu();
 
     const drawer = screen.getByRole("dialog");
@@ -126,7 +143,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("closes the drawer on Escape and returns focus to the menu button", async () => {
-    render(<Header />);
+    renderHeader();
     const user = await openMobileMenu();
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -140,7 +157,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("closes the drawer when the backdrop is clicked", async () => {
-    render(<Header />);
+    renderHeader();
     await openMobileMenu();
 
     const user = userEvent.setup();
@@ -151,7 +168,7 @@ describe("Header — mobile navigation drawer", () => {
 
   it("shows maintainer Dashboard and Settings links in the drawer", async () => {
     setMaintainerSession();
-    render(<Header />);
+    renderHeader();
     await openMobileMenu();
 
     const drawer = screen.getByRole("dialog");
@@ -167,7 +184,7 @@ describe("Header — mobile navigation drawer", () => {
 
   it("hides maintainer links for contributors in the drawer", async () => {
     setContributorSession();
-    render(<Header />);
+    renderHeader();
     await openMobileMenu();
 
     const drawer = screen.getByRole("dialog");
@@ -183,7 +200,7 @@ describe("Header — mobile navigation drawer", () => {
 
   it("shows Register as a link when signed in", async () => {
     setContributorSession();
-    render(<Header />);
+    renderHeader();
     await openMobileMenu();
 
     const drawer = screen.getByRole("dialog");
@@ -195,7 +212,7 @@ describe("Header — mobile navigation drawer", () => {
   });
 
   it("traps Tab focus inside the drawer", async () => {
-    render(<Header />);
+    renderHeader();
     const user = await openMobileMenu();
 
     const drawer = screen.getByRole("dialog");

@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import * as prometheusRoute from "@/app/api/metrics/prometheus/route";
 
 vi.mock("@/lib/api-auth", () => ({
-  requireMaintainerSession: vi.fn(),
+  requireOperator: vi.fn(),
 }));
 
 vi.mock("@/lib/horizon", () => ({
@@ -53,7 +53,7 @@ vi.mock("@/lib/stats", () => ({
   })),
 }));
 
-import { requireMaintainerSession } from "@/lib/api-auth";
+import { requireOperator } from "@/lib/api-auth";
 
 describe("Prometheus metrics endpoint", () => {
   beforeEach(() => {
@@ -74,14 +74,14 @@ describe("Prometheus metrics endpoint", () => {
 
   describe("authentication", () => {
     it("returns 403 when no auth and no bearer token", async () => {
-      vi.mocked(requireMaintainerSession).mockResolvedValue(null as never);
+      vi.mocked(requireOperator).mockResolvedValue(null as never);
 
       const resp = await prometheusRoute.GET(buildRequest());
       expect(resp.status).toBe(403);
     });
 
     it("allows access when maintainer session is present", async () => {
-      vi.mocked(requireMaintainerSession).mockResolvedValue({ user: { isMaintainer: true } } as never);
+      vi.mocked(requireOperator).mockResolvedValue({ user: { isMaintainer: true } } as never);
 
       const resp = await prometheusRoute.GET(buildRequest());
       expect(resp.status).toBe(200);
@@ -90,18 +90,18 @@ describe("Prometheus metrics endpoint", () => {
 
     it("allows access with valid PROMETHEUS_SCRAPE_TOKENS bearer token", async () => {
       process.env.PROMETHEUS_SCRAPE_TOKENS = "token-a, token-b ,tokenc";
-      vi.mocked(requireMaintainerSession).mockResolvedValue(null as never);
+      vi.mocked(requireOperator).mockResolvedValue(null as never);
 
       const resp = await prometheusRoute.GET(
         buildRequest({ Authorization: "Bearer token-b" })
       );
       expect(resp.status).toBe(200);
-      expect(requireMaintainerSession).not.toHaveBeenCalled();
+      expect(requireOperator).not.toHaveBeenCalled();
     });
 
     it("denies access when bearer token is not in allowlist", async () => {
       process.env.PROMETHEUS_SCRAPE_TOKENS = "trusted-token-1";
-      vi.mocked(requireMaintainerSession).mockResolvedValue(null as never);
+      vi.mocked(requireOperator).mockResolvedValue(null as never);
 
       const resp = await prometheusRoute.GET(
         buildRequest({ Authorization: "Bearer wrong-token" })
@@ -110,19 +110,19 @@ describe("Prometheus metrics endpoint", () => {
     });
 
     it("falls back to session auth when allowlist env is not set", async () => {
-      vi.mocked(requireMaintainerSession).mockResolvedValue({ user: { isMaintainer: true } } as never);
+      vi.mocked(requireOperator).mockResolvedValue({ user: { isMaintainer: true } } as never);
 
       const resp = await prometheusRoute.GET(
         buildRequest({ Authorization: "Bearer whatever" })
       );
       expect(resp.status).toBe(200);
-      expect(requireMaintainerSession).toHaveBeenCalled();
+      expect(requireOperator).toHaveBeenCalled();
     });
   });
 
   describe("prometheus text format", () => {
     beforeEach(() => {
-      vi.mocked(requireMaintainerSession).mockResolvedValue({ user: { isMaintainer: true } } as never);
+      vi.mocked(requireOperator).mockResolvedValue({ user: { isMaintainer: true } } as never);
     });
 
     it("returns the correct content-type for Prometheus scraping", async () => {

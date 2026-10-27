@@ -22,6 +22,13 @@ import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { resetRateLimit } from "@/lib/rate-limit";
+
+// The register route rate-limits per IP with process-local state; reset
+// between tests so POSTs from earlier tests cannot 429 later ones.
+beforeEach(() => {
+  resetRateLimit();
+});
 
 // ---------------------------------------------------------------------------
 // Shared helpers

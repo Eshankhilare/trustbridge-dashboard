@@ -82,7 +82,8 @@ describe("GET /api/disputes", () => {
     const res = await GET(request("GET"));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.disputes).toEqual(mockDisputes);
+    // Responses cross JSON serialization, so Dates arrive as ISO strings.
+    expect(json.disputes).toEqual(JSON.parse(JSON.stringify(mockDisputes)));
   });
 
   it("returns only user's disputes for contributors", async () => {
@@ -181,7 +182,8 @@ describe("GET /api/disputes", () => {
     const res = await GET(request("GET"));
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.disputes).toEqual(mockDisputes);
+    // Responses cross JSON serialization, so Dates arrive as ISO strings.
+    expect(json.disputes).toEqual(JSON.parse(JSON.stringify(mockDisputes)));
     expect(json.hasMore).toBe(false);
     expect(json.nextCursor).toBeUndefined();
   });

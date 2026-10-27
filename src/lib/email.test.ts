@@ -182,6 +182,8 @@ describe("Email service", () => {
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("treasury@example.com"));
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("test.csv"));
     consoleSpy.mockRestore();
+  });
+
   describe("console provider", () => {
     it("sends notification with console service", async () => {
       const consoleSpy = vi.spyOn(console, "log");

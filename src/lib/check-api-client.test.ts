@@ -60,14 +60,16 @@ describe("checkAddressViaApi", () => {
         status: 429,
         ok: false,
         body: { errors: ["Rate limit exceeded. Please try again later."] },
-        retryAfter: "17",
+        // Small value: checkAddressViaApi honors Retry-After between its
+        // 3 attempts, and a large value would exceed the test timeout.
+        retryAfter: "1",
       })
     ) as unknown as typeof fetch;
 
     const outcome = await checkAddressViaApi("GADDRESS");
     expect(outcome).toEqual({
       kind: "rate_limited",
-      retryAfterSeconds: 17,
+      retryAfterSeconds: 1,
       errors: ["Rate limit exceeded. Please try again later."],
     });
   });

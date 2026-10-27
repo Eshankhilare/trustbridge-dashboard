@@ -132,17 +132,22 @@ describe("AddressInput check progress states", () => {
         status: 429,
         ok: false,
         body: { errors: ["Rate limit exceeded. Please try again later."] },
-        retryAfter: "42",
+        // Small value: the component awaits checkAddressViaApi, which honors
+        // Retry-After between attempts; a large value would stall the test.
+        retryAfter: "1",
       })
     ) as unknown as typeof fetch;
 
     render(<AddressInput value={VALID} onChange={() => {}} />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("address-check-status")).toHaveTextContent(
-        /try again in 42s/i
-      );
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("address-check-status")).toHaveTextContent(
+          /try again in 1s/i
+        );
+      },
+      { timeout: 10000 }
+    );
     // The generic result block (readiness badge etc.) must not render for
     // a rate-limited outcome — it isn't a HorizonCheckResult.
     expect(

@@ -76,6 +76,22 @@ vi.mock("@/lib/address-history", () => ({
   recordAddressChange: vi.fn().mockResolvedValue(undefined),
 }));
 
+// The route rate-limits per IP (10 req/min). Concurrency tests burst past
+// that by design (120 parallel requests); mock the limiter open so these
+// tests isolate DB-race/idempotency behavior. Limiter behavior itself is
+// covered by register-rate-limit.test.ts and tests/api/register.test.ts.
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: vi.fn(() => ({
+      allowed: true,
+      retryAfter: 0,
+      remaining: 10,
+    })),
+  };
+});
+
 import { getServerSession } from "next-auth";
 import { checkStellarAddress } from "@/lib/horizon";
 import { prisma } from "@/lib/prisma";

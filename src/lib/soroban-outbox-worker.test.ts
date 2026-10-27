@@ -227,19 +227,21 @@ describe("Unified Outbox Adapter (Issue #488)", () => {
   });
 
   it("runs in-memory via test sink when setSorobanOutboxSink is configured", async () => {
-    const sinkMock = vi.fn().mockResolvedValue(undefined);
+    // Capture the observed status eagerly: the sink receives the live entry
+    // object, which the adapter marks COMPLETED after delivery resolves.
+    const observedStatuses: unknown[] = [];
+    const sinkMock = vi.fn(async (entry: { status: unknown }) => {
+      observedStatuses.push(entry.status);
+    });
     setSorobanOutboxSink(sinkMock);
 
     const payload = { stellarAddress: "G2", githubUsername: "u2", registrationId: "r2" };
     const entry = await enqueueSorobanOutbox(payload, { idempotencyKey: "idem-1" });
 
-    expect(sinkMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "idem-1",
-        payload,
-        status: "PENDING",
-      })
-    );
+    expect(sinkMock).toHaveBeenCalledTimes(1);
+    // The sink observed the entry as-enqueued (PENDING)...
+    expect(observedStatuses).toEqual(["PENDING"]);
+    // ...while the stored entry advanced to COMPLETED after delivery.
     expect(entry.status).toBe("COMPLETED");
     expect(getSorobanOutboxEntry("idem-1")?.status).toBe("COMPLETED");
   });

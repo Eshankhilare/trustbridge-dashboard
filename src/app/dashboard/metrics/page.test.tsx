@@ -91,9 +91,11 @@ describe("MetricsPage layout", () => {
   it("keeps all readiness counts visible", () => {
     render(<MetricsPage />);
 
-    expect(screen.getByText(/ready/i)).toBeInTheDocument();
-    expect(screen.getByText(/low reserve/i)).toBeInTheDocument();
-    expect(screen.getByText(/not ready/i)).toBeInTheDocument();
+    // Exact labels (not regex): WaveReadinessBar renders "1/3 ready (33%)",
+    // which would also match a loose /ready/i pattern.
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText("Low reserve")).toBeInTheDocument();
+    expect(screen.getByText("Not ready")).toBeInTheDocument();
   });
 
   describe("circuit breaker section", () => {

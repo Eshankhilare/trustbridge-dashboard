@@ -10,6 +10,7 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/maintainers", () => ({
   isMaintainer: vi.fn(),
+  listRegistrationConflicts: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { getServerSession } from "next-auth";
-import { isMaintainer } from "@/lib/maintainers";
+import { isMaintainer, listRegistrationConflicts } from "@/lib/maintainers";
 import { prisma } from "@/lib/prisma";
 import { GET } from "./route";
 
@@ -47,7 +48,7 @@ describe("GET /api/maintainer/conflicts", () => {
       user: { id: "maintainer-1" },
     } as any);
     vi.mocked(isMaintainer).mockResolvedValueOnce(true);
-    vi.mocked(prisma.registrationConflict.findMany).mockResolvedValueOnce([
+    vi.mocked(listRegistrationConflicts).mockResolvedValueOnce([
       {
         id: "conflict-1",
         attemptedAddress: "GABC...",

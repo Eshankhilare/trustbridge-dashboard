@@ -45,7 +45,7 @@ describe("in-memory Soroban outbox", () => {
     expect(entry.id).not.toBe("");
     expect(entry).toMatchObject({
       payload,
-      status: "pending",
+      status: "PENDING",
       attempts: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -93,13 +93,13 @@ describe("in-memory Soroban outbox", () => {
     const first = await enqueueSorobanOutbox({ number: 1 }, { idempotencyKey: "z-first" });
 
     expect(listSorobanOutbox()).toEqual([first, second]);
-    expect(first.status).toBe("pending");
+    expect(first.status).toBe("PENDING");
     expect(first.attempts).toBe(1);
   });
 
   it("delivers a pending entry to the global sink and marks it sent after completion", async () => {
     const sink = vi.fn(async (entry: SorobanOutboxEntry) => {
-      expect(entry.status).toBe("pending");
+      expect(entry.status).toBe("PENDING");
       expect(getSorobanOutboxEntry(entry.id)).toBe(entry);
       vi.setSystemTime(new Date("2026-01-01T00:01:00.000Z"));
     });
@@ -114,7 +114,7 @@ describe("in-memory Soroban outbox", () => {
 
     expect(sink).toHaveBeenCalledTimes(1);
     expect(sink).toHaveBeenCalledWith(entry);
-    expect(entry.status).toBe("sent");
+    expect(entry.status).toBe("COMPLETED");
     expect(entry.attempts).toBe(0);
     expect(entry.createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(entry.updatedAt).toBe("2026-01-01T00:01:00.000Z");
@@ -134,8 +134,8 @@ describe("in-memory Soroban outbox", () => {
     expect(overrideSink).toHaveBeenCalledWith(overridden);
     expect(globalSink).toHaveBeenCalledTimes(1);
     expect(globalSink).toHaveBeenCalledWith(global);
-    expect(overridden.status).toBe("sent");
-    expect(global.status).toBe("sent");
+    expect(overridden.status).toBe("COMPLETED");
+    expect(global.status).toBe("COMPLETED");
   });
 
   it("propagates async failures, counts retries, and clears the error on successful retry", async () => {
@@ -149,7 +149,7 @@ describe("in-memory Soroban outbox", () => {
     await expect(enqueueSorobanOutbox({ version: 1 }, options)).rejects.toBe(error);
     const failed = getSorobanOutboxEntry("retry-1");
     expect(failed).toMatchObject({
-      status: "failed",
+      status: "FAILED",
       attempts: 1,
       lastError: "Soroban unavailable",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -170,7 +170,7 @@ describe("in-memory Soroban outbox", () => {
     expect(retried).toMatchObject({
       id: "retry-1",
       payload: { version: 3 },
-      status: "sent",
+      status: "COMPLETED",
       attempts: 2,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:02:00.000Z",
@@ -188,7 +188,7 @@ describe("in-memory Soroban outbox", () => {
     })).rejects.toBe("delivery failed");
 
     expect(getSorobanOutboxEntry("sync-failure")).toMatchObject({
-      status: "failed",
+      status: "FAILED",
       attempts: 1,
       lastError: "delivery failed",
     });
@@ -210,12 +210,12 @@ describe("in-memory Soroban outbox", () => {
     expect(sink).toHaveBeenCalledTimes(1);
     expect(listSorobanOutbox()).toHaveLength(1);
     expect(duplicates[0]).toBe(duplicates[1]);
-    expect(duplicates[0].status).toBe("pending");
+    expect(duplicates[0].status).toBe("PENDING");
 
     finishDelivery();
     const first = await firstPromise;
     expect(first).toBe(duplicates[0]);
-    expect(first.status).toBe("sent");
+    expect(first.status).toBe("COMPLETED");
     expect(listSorobanOutbox()).toEqual([first]);
   });
 
@@ -241,7 +241,7 @@ describe("in-memory Soroban outbox", () => {
     const entry = await enqueueSorobanOutbox({ number: 1 });
 
     expect(sink).not.toHaveBeenCalled();
-    expect(entry.status).toBe("pending");
+    expect(entry.status).toBe("PENDING");
   });
 
   it("stores a large JSON payload and deduplicates it by its explicit key", async () => {

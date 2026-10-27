@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { GET } from "@/app/api/metrics/route";
 
 /**
@@ -30,6 +30,17 @@ vi.mock("@/lib/registrations", () => ({
 
 vi.mock("@/lib/audit", () => ({
   getRecentAuditLog: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    registration: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    addressHistoryRecord: {
+      count: vi.fn().mockResolvedValue(0),
+    },
+  },
 }));
 
 import { requireOperator } from "@/lib/api-auth";

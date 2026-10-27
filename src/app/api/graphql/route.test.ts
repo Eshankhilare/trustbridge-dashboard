@@ -107,7 +107,7 @@ describe("POST /api/graphql", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getContributorsPaginated).toHaveBeenCalledWith("cursor-1", 10);
+    expect(getContributorsPaginated).toHaveBeenCalledWith("cursor-1", 10, undefined);
   });
 
   it("rejects writes because the API is read-only", async () => {
@@ -205,7 +205,7 @@ describe("POST /api/graphql", () => {
       const response = await POST(post(CONTRIB_QUERY, { first: 12 }));
 
       expect(response.status).toBe(200);
-      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 12);
+      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 12, undefined);
     });
 
     it("treats an inline literal and an equivalent variable the same", async () => {
@@ -216,15 +216,18 @@ describe("POST /api/graphql", () => {
 
       expect(literalResponse.status).toBe(200);
       expect(variableResponse.status).toBe(200);
+      // Third argument is the optional verification-status filter (#602).
       expect(getContributorsPaginated).toHaveBeenNthCalledWith(
         1,
         undefined,
-        12
+        12,
+        undefined
       );
       expect(getContributorsPaginated).toHaveBeenNthCalledWith(
         2,
         undefined,
-        12
+        12,
+        undefined
       );
     });
 
@@ -264,7 +267,7 @@ describe("POST /api/graphql", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 25);
+      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 25, undefined);
     });
 
     // An explicit `null` is legal GraphQL. It reaches the resolver as `null`
@@ -287,7 +290,7 @@ describe("POST /api/graphql", () => {
       const response = await POST(post(query, variables));
 
       expect(response.status).toBe(200);
-      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, null);
+      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, null, undefined);
     });
 
     // A missing argument is the case where the schema default does apply, so the
@@ -298,7 +301,7 @@ describe("POST /api/graphql", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 25);
+      expect(getContributorsPaginated).toHaveBeenCalledWith(undefined, 25, undefined);
     });
 
     it("does not let an invalid first value bypass the cost analyzer", async () => {

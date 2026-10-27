@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SnapshotDiffPanel } from "@/components/SnapshotDiffPanel";
 
@@ -56,13 +56,16 @@ function createMockFile(content: string, name = "test.csv") {
   return file;
 }
 
-// Direct file input simulation - trigger onChange with mock file
-// Find inputs directly without clicking buttons (they're always in DOM, just hidden)
+// Direct file input simulation - trigger onChange with mock file.
+// Loaded slots unmount their input (stats render instead), so re-query every
+// time: with two inputs present index by slot, otherwise the single remaining
+// input is necessarily the other (still-empty) slot.
 async function uploadFileDirect(which: "older" | "newer", file: File) {
-  // Find the file input for the specific slot - they're always in DOM (hidden)
   const fileInputs = document.querySelectorAll<HTMLInputElement>('input[type="file"][accept=".csv,text/csv"]');
-  const inputIndex = which === "older" ? 0 : 1;
-  const input = fileInputs[inputIndex];
+  const input =
+    fileInputs.length === 2
+      ? fileInputs[which === "older" ? 0 : 1]
+      : fileInputs[0];
   
   if (!input) {
     throw new Error(`File input for ${which} not found. Found ${fileInputs.length} inputs.`);
@@ -98,15 +101,16 @@ describe("SnapshotDiffPanel", () => {
   it("shows empty state when no snapshots uploaded", () => {
     render(<SnapshotDiffPanel />);
 
-    // Text is broken up by <strong> elements, use function matcher
+    // Text is broken up by <strong> elements and repeats up the ancestor
+    // chain, so assert that at least one match exists rather than exactly one.
     expect(
-      screen.getByText((_, el) => 
-        el.textContent?.includes("Upload an") && 
-        el.textContent?.includes("older") && 
+      screen.getAllByText((_, el) =>
+        el.textContent?.includes("Upload an") &&
+        el.textContent?.includes("older") &&
         el.textContent?.includes("newer") &&
         el.textContent?.includes("contributor")
-      )
-    ).toBeInTheDocument();
+      ).length
+    ).toBeGreaterThan(0);
     expect(screen.queryByTestId("snapshot-diff-table")).not.toBeInTheDocument();
     expect(screen.queryByTestId("snapshot-diff-download")).not.toBeInTheDocument();
   });
@@ -172,9 +176,11 @@ describe("SnapshotDiffPanel", () => {
     await uploadFileDirect("older", createMockFile(validOldCsv, "old.csv"));
     await uploadFileDirect("newer", createMockFile(validNewCsv, "new.csv"));
 
-    // Summary cards
-    expect(screen.getByText(/\+1/)).toBeInTheDocument(); // added (dave)
-    expect(screen.getByText(/3 → 4/)).toBeInTheDocument(); // old → new total
+    // Summary cards: "+1" appears twice for this fixture (Added card and
+    // Net-change card); "(Wave N vs Wave N+1)" never equals "+1" exactly.
+    const summary = screen.getByTestId("snapshot-diff-panel");
+    expect(within(summary).getAllByText("+1")).toHaveLength(2); // added (dave)
+    expect(within(summary).getByText("3 → 4")).toBeInTheDocument(); // old → new total
   });
 
   it("renders diff table with added rows", async () => {
@@ -183,10 +189,11 @@ describe("SnapshotDiffPanel", () => {
     await uploadFileDirect("older", createMockFile(addedOnlyOld, "old.csv"));
     await uploadFileDirect("newer", createMockFile(addedOnlyNew, "new.csv"));
 
-    // Should show bob as added
-    expect(screen.getByText(/added/i)).toBeInTheDocument();
-    expect(screen.getByText(/bob/i)).toBeInTheDocument();
-    expect(screen.getByText(/GB1234567890ABCDEF1234567890ABCDEF12345678/i)).toBeInTheDocument();
+    // Should show bob as added (scoped to the diff table: page copy also mentions these words)
+    const table = screen.getByTestId("snapshot-diff-table");
+    expect(within(table).getByText("Added")).toBeInTheDocument();
+    expect(within(table).getByText("bob")).toBeInTheDocument();
+    expect(within(table).getByText("GB1234567890ABCDEF1234567890ABCDEF12345678")).toBeInTheDocument();
   });
 
   it("renders removed rows correctly", async () => {
@@ -195,9 +202,10 @@ describe("SnapshotDiffPanel", () => {
     await uploadFileDirect("older", createMockFile(removedOld, "old.csv"));
     await uploadFileDirect("newer", createMockFile(removedNew, "new.csv"));
 
-    expect(screen.getByText(/removed/i)).toBeInTheDocument();
-    expect(screen.getByText(/bob/i)).toBeInTheDocument();
-    expect(screen.getByText(/GB1234567890ABCDEF1234567890ABCDEF12345678/i)).toBeInTheDocument();
+    const table = screen.getByTestId("snapshot-diff-table");
+    expect(within(table).getByText("Removed")).toBeInTheDocument();
+    expect(within(table).getByText("bob")).toBeInTheDocument();
+    expect(within(table).getByText("GB1234567890ABCDEF1234567890ABCDEF12345678")).toBeInTheDocument();
   });
 
   it("renders address_changed rows correctly", async () => {
@@ -206,10 +214,11 @@ describe("SnapshotDiffPanel", () => {
     await uploadFileDirect("older", createMockFile(addressChangedOld, "old.csv"));
     await uploadFileDirect("newer", createMockFile(addressChangedNew, "new.csv"));
 
-    expect(screen.getByText(/address changed/i)).toBeInTheDocument();
-    expect(screen.getByText(/alice/i)).toBeInTheDocument();
-    expect(screen.getByText(/GA1234567890ABCDEF1234567890ABCDEF12345678/i)).toBeInTheDocument();
-    expect(screen.getByText(/GA9999999999ABCDEF1234567890ABCDEF12345678/i)).toBeInTheDocument();
+    const table = screen.getByTestId("snapshot-diff-table");
+    expect(within(table).getByText("Address changed")).toBeInTheDocument();
+    expect(within(table).getByText("alice")).toBeInTheDocument();
+    expect(within(table).getByText("GA1234567890ABCDEF1234567890ABCDEF12345678")).toBeInTheDocument();
+    expect(within(table).getByText("GA9999999999ABCDEF1234567890ABCDEF12345678")).toBeInTheDocument();
   });
 
   it("shows 'No differences found' when snapshots are identical", async () => {
@@ -238,10 +247,11 @@ describe("SnapshotDiffPanel", () => {
     expect(checkbox).toBeChecked();
 
     // Unchanged rows should now appear in table
-    expect(screen.getByText(/unchanged/i)).toBeInTheDocument();
-    expect(screen.getByText(/alice/i)).toBeInTheDocument();
-    expect(screen.getByText(/bob/i)).toBeInTheDocument();
-    expect(screen.getByText(/charlie/i)).toBeInTheDocument();
+    const table = screen.getByTestId("snapshot-diff-table");
+    expect(within(table).getAllByText("Unchanged")).toHaveLength(3);
+    expect(within(table).getByText("alice")).toBeInTheDocument();
+    expect(within(table).getByText("bob")).toBeInTheDocument();
+    expect(within(table).getByText("charlie")).toBeInTheDocument();
 
     // Uncheck
     fireEvent.click(checkbox);
@@ -264,8 +274,11 @@ describe("SnapshotDiffPanel", () => {
     await uploadFileDirect("newer", createMockFile(validNewCsv, "new.csv"));
 
     const downloadBtn = screen.getByTestId("snapshot-diff-download");
-    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
-    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    // jsdom has no URL.createObjectURL — stub it (and revoke) directly.
+    const createObjectURLSpy = vi.fn().mockReturnValue("blob:mock");
+    URL.createObjectURL = createObjectURLSpy;
+    const revokeObjectURLSpy = vi.fn();
+    URL.revokeObjectURL = revokeObjectURLSpy;
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
     fireEvent.click(downloadBtn);
@@ -274,8 +287,6 @@ describe("SnapshotDiffPanel", () => {
     expect(clickSpy).toHaveBeenCalled();
     expect(revokeObjectURLSpy).toHaveBeenCalled();
 
-    createObjectURLSpy.mockRestore();
-    revokeObjectURLSpy.mockRestore();
     clickSpy.mockRestore();
   });
 

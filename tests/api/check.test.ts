@@ -100,17 +100,14 @@ describe("POST /api/check", () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: true,
       trustline: true,
-      xlm_balance: "2",
-      readiness: "ready",
-      horizon_error: null,
-    } as never);
       trustline_authorized: true,
       verified: true,
       xlm_balance: "2",
       spendable_xlm_balance: "1.5",
       readiness: "ready",
+      horizon_error: null,
       errors: [],
-    } as any);
+    } as never);
 
     // Exhaust the default limit (10 requests)
     for (let i = 0; i < 10; i++) {
@@ -179,17 +176,14 @@ describe("POST /api/check", () => {
     vi.mocked(checkStellarAddress).mockResolvedValue({
       funded: true,
       trustline: true,
-      xlm_balance: "2",
-      readiness: "ready",
-      horizon_error: null,
-    } as never);
       trustline_authorized: true,
       verified: true,
       xlm_balance: "2",
       spendable_xlm_balance: "1.5",
       readiness: "ready",
+      horizon_error: null,
       errors: [],
-    } as any);
+    } as never);
 
     const r = post({ address: "GBSX" });
     const res = await POST(r);

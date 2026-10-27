@@ -28,15 +28,14 @@ vi.mock("@/lib/feature-flags", () => ({
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Helpers for building deterministic frozen windows relative to `now`. */
-// The current test environment date is 2026-10-01. Use a window that
-// spans several days around that date so all "active window" tests pass at
-// any moment the suite runs near that date.
-const PAST_START = "2026-09-29T00:00:00Z";
-const PAST_END = "2026-10-03T23:59:59Z";
-const INSIDE_WINDOW = new Date("2026-10-01T04:00:00Z"); // middle of window
-const BEFORE_WINDOW = new Date("2026-09-28T23:59:59Z"); // 1 second before start
-const AFTER_WINDOW = new Date("2026-10-04T00:00:00Z");  // 1 second after end
+/** Helpers for building deterministic frozen windows relative to *now* (not
+ * hardcoded dates, which rot as soon as the suite runs past them). */
+const DAY_MS = 86_400_000;
+const PAST_START = new Date(Date.now() - 2 * DAY_MS).toISOString();
+const PAST_END = new Date(Date.now() + 2 * DAY_MS).toISOString();
+const INSIDE_WINDOW = new Date(Date.now()); // middle of window
+const BEFORE_WINDOW = new Date(Date.now() - 3 * DAY_MS); // well before start
+const AFTER_WINDOW = new Date(Date.now() + 3 * DAY_MS); // well after end
 
 function makeRequest(
   url = "http://localhost:3000/api/register/recheck",

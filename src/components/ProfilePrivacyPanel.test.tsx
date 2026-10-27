@@ -91,7 +91,7 @@ describe("ProfilePrivacyPanel", () => {
       expect(screen.getByTestId("profile-privacy-panel")).toBeInTheDocument();
       expect(screen.getByText("Profile visibility")).toBeInTheDocument();
       expect(
-        screen.getByText("Control what others can see at your public profile link.")
+        screen.getByText(/Control what others can see at your public profile link/)
       ).toBeInTheDocument();
     });
 
@@ -340,7 +340,7 @@ describe("ProfilePrivacyPanel", () => {
       render(<ProfilePrivacyPanel />);
 
       await new Promise((r) => setTimeout(r, 10));
-      expect(screen.getByRole("link", { name: /your public profile/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /\/profile\/alice/i })).toHaveAttribute(
         "href",
         "/profile/alice"
       );

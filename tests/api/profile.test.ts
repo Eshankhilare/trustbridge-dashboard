@@ -219,7 +219,7 @@ describe("PATCH /api/profile", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns 403 when cross-origin", async () => {
-    const res = await patchSettings(
+    const res = await patchPrivacySettings(
       new NextRequest("http://localhost:3000/api/profile", {
         method: "PATCH",
         headers: { origin: "https://evil.com", host: "localhost:3000", "content-type": "application/json" },
@@ -231,13 +231,13 @@ describe("PATCH /api/profile", () => {
 
   it("returns 401 when unauthenticated", async () => {
     vi.mocked(getServerSession).mockResolvedValue(null);
-    const res = await patchSettings(patchSettings({ profilePublic: true, showStellarAddress: false }));
+    const res = await patchPrivacySettings(patchSettings({ profilePublic: true, showStellarAddress: false }));
     expect(res.status).toBe(401);
   });
 
   it("returns 400 for invalid body", async () => {
     vi.mocked(getServerSession).mockResolvedValue({ user: { id: "u1" } } as any);
-    const res = await patchSettings(patchSettings({ profilePublic: "yes" }));
+    const res = await patchPrivacySettings(patchSettings({ profilePublic: "yes" }));
     expect(res.status).toBe(400);
   });
 
@@ -251,7 +251,7 @@ describe("PATCH /api/profile", () => {
     } as any);
     vi.mocked(prisma.registration.update).mockResolvedValue({} as any);
 
-    const res = await patchSettings(
+    const res = await patchPrivacySettings(
       new NextRequest("http://localhost:3000/api/profile", {
         method: "PATCH",
         headers: sameOrigin,
@@ -273,7 +273,7 @@ describe("PATCH /api/profile", () => {
     vi.mocked(getServerSession).mockResolvedValue({ user: { id: "u1" } } as any);
     vi.mocked(prisma.registration.findUnique).mockResolvedValue(null);
 
-    const res = await patchSettings(
+    const res = await patchPrivacySettings(
       new NextRequest("http://localhost:3000/api/profile", {
         method: "PATCH",
         headers: sameOrigin,
@@ -293,7 +293,7 @@ describe("PATCH /api/profile", () => {
     } as any);
     vi.mocked(prisma.registration.update).mockResolvedValue({} as any);
 
-    const res = await patchSettings(
+    const res = await patchPrivacySettings(
       new NextRequest("http://localhost:3000/api/profile", {
         method: "PATCH",
         headers: sameOrigin,

@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { BackgroundQueue } from "@/lib/background-queue";
+import { InMemoryBackgroundQueue } from "@/lib/background-queue";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,7 +39,7 @@ function alwaysSucceed(): (payload: unknown) => Promise<void> {
 
 describe("BackgroundQueue – basic lifecycle", () => {
   it("starts with empty metrics and zero counts", () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     const m = q.getWorkerHealthMetrics();
 
     expect(m.pendingCount).toBe(0);
@@ -52,7 +52,7 @@ describe("BackgroundQueue – basic lifecycle", () => {
   });
 
   it("increments pendingCount when a job is enqueued", () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     q.enqueue({ target: "G123" });
 
     expect(q.getWorkerHealthMetrics().pendingCount).toBe(1);
@@ -60,7 +60,7 @@ describe("BackgroundQueue – basic lifecycle", () => {
   });
 
   it("sets workerStartedAt on first enqueue", () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     expect(q.getWorkerHealthMetrics().workerStartedAt).toBeNull();
 
     q.enqueue("job");
@@ -70,7 +70,7 @@ describe("BackgroundQueue – basic lifecycle", () => {
   });
 
   it("does not change workerStartedAt on subsequent enqueues", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     q.enqueue("a");
     const first = q.getWorkerHealthMetrics().workerStartedAt;
 
@@ -82,7 +82,7 @@ describe("BackgroundQueue – basic lifecycle", () => {
   });
 
   it("moves job to completed and updates lastProcessedAt", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     q.enqueue("data");
     await q.process(alwaysSucceed());
 
@@ -94,13 +94,13 @@ describe("BackgroundQueue – basic lifecycle", () => {
   });
 
   it("returns null from process() when queue is empty", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     const result = await q.process(alwaysSucceed());
     expect(result).toBeNull();
   });
 
   it("returns job id from process() when a job runs", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     const id = q.enqueue("payload");
     const processed = await q.process(alwaysSucceed());
     expect(processed).toBe(id);
@@ -113,7 +113,7 @@ describe("BackgroundQueue – basic lifecycle", () => {
 
 describe("BackgroundQueue – DLQ promotion", () => {
   it("retries up to maxAttempts before moving to DLQ", async () => {
-    const q = new BackgroundQueue(3);
+    const q = new InMemoryBackgroundQueue(3);
     q.enqueue("will-fail");
     const fail = alwaysFail();
 
@@ -135,7 +135,7 @@ describe("BackgroundQueue – DLQ promotion", () => {
   });
 
   it("increments dlqCount for each DLQ job independently", async () => {
-    const q = new BackgroundQueue(1);
+    const q = new InMemoryBackgroundQueue(1);
     q.enqueue("a");
     q.enqueue("b");
     await q.process(alwaysFail());
@@ -144,7 +144,7 @@ describe("BackgroundQueue – DLQ promotion", () => {
   });
 
   it("does not update lastProcessedAt when a job fails into DLQ", async () => {
-    const q = new BackgroundQueue(1);
+    const q = new InMemoryBackgroundQueue(1);
     q.enqueue("fail-job");
     await q.process(alwaysFail());
     // DLQ promotion should not record a successful lastProcessedAt
@@ -152,7 +152,7 @@ describe("BackgroundQueue – DLQ promotion", () => {
   });
 
   it("keeps completed count separate from DLQ count in mixed scenario", async () => {
-    const q = new BackgroundQueue(1);
+    const q = new InMemoryBackgroundQueue(1);
     q.enqueue("good");
     q.enqueue("bad");
 
@@ -173,7 +173,7 @@ describe("BackgroundQueue – DLQ promotion", () => {
 
 describe("BackgroundQueue – metrics reset", () => {
   it("clear() resets all counters to zero", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     q.enqueue("x");
     await q.process(alwaysSucceed());
     q.clear();
@@ -187,8 +187,8 @@ describe("BackgroundQueue – metrics reset", () => {
   });
 
   it("independent instances do not share state", async () => {
-    const a = new BackgroundQueue();
-    const b = new BackgroundQueue();
+    const a = new InMemoryBackgroundQueue();
+    const b = new InMemoryBackgroundQueue();
     a.enqueue("for-a");
     await a.process(alwaysSucceed());
 
@@ -203,7 +203,7 @@ describe("BackgroundQueue – metrics reset", () => {
 
 describe("BackgroundQueue – getWorkerHealthMetrics read-only safety", () => {
   it("multiple consecutive calls return stable counts", async () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     q.enqueue("a");
     q.enqueue("b");
     await q.process(alwaysSucceed());
@@ -214,7 +214,7 @@ describe("BackgroundQueue – getWorkerHealthMetrics read-only safety", () => {
   });
 
   it("returns zeros for all fields (not undefined) on empty queue", () => {
-    const q = new BackgroundQueue();
+    const q = new InMemoryBackgroundQueue();
     const m = q.getWorkerHealthMetrics();
     // All numeric fields must be 0, not undefined/null
     expect(m.pendingCount).toBe(0);
@@ -222,6 +222,13 @@ describe("BackgroundQueue – getWorkerHealthMetrics read-only safety", () => {
     expect(m.completedCount).toBe(0);
     expect(m.dlqCount).toBe(0);
     expect(m.totalEnqueued).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Durable queue DLQ additions (issue #200)
+// ---------------------------------------------------------------------------
+/**
  * Unit tests for the dead-letter-queue additions to BackgroundQueue (issue #200):
  * error size cap + PII redaction, getFailedJobs, retryJob.
  */

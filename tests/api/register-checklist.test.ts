@@ -1,26 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-import { GET, PATCH } from "@/app/api/register/checklist/route";
-
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
-
 vi.mock("next-auth", () => ({
   getServerSession: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    registration: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-  },
-}));
-
-import { getServerSession } from "next-auth";
-import { prisma } from "@/lib/prisma";
     user: {
       findUnique: vi.fn(),
       update: vi.fn(),
@@ -53,7 +39,8 @@ vi.mock("@/lib/audit", () => ({
 
 import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
-import { GET as getRegister, POST as postRegister } from "@/app/api/register/route";
+import { GET, PATCH } from "@/app/api/register/checklist/route";
+import { GET as getRegister } from "@/app/api/register/route";
 import { PATCH as patchChecklist } from "@/app/api/register/checklist/route";
 
 const sameOriginHeaders: Record<string, string> = {
@@ -63,6 +50,12 @@ const sameOriginHeaders: Record<string, string> = {
 };
 
 function patch(body: unknown, headers?: Record<string, string>) {
+  return new NextRequest("http://localhost:3000/api/register/checklist", {
+    method: "PATCH",
+    headers: headers ?? sameOriginHeaders,
+    body: JSON.stringify(body),
+  });
+}
 function patchRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest("http://localhost:3000/api/register/checklist", {
     method: "PATCH",
@@ -188,6 +181,9 @@ describe("PATCH /api/register/checklist", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.checklistCompleted.usdcTrustlineAdded).toBe(true);
+  });
+});
+
 describe("Onboarding Checklist Persistence & GDPR Deletion", () => {
   beforeEach(() => {
     vi.clearAllMocks();

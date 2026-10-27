@@ -133,8 +133,9 @@ describe("auth jwt callback - maintainer team scoping", () => {
 
     expect(token.isMaintainer).toBe(true);
     expect(token.maintainerOrgId).toBe("stellar-org");
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    // 1 org-membership check + 1 role-resolution check + 1 available-orgs
+    // check (all hit /user/orgs; the latter two are best-effort enrichment).
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(recordAuditLog).not.toHaveBeenCalled();
   });
 

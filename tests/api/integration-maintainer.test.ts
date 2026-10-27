@@ -68,8 +68,10 @@ function makeContributor(
 }
 
 function mockMaintainer(id = "m-1", login = "maintainer") {
+  // Operator role mirrors a team-configured deployment: requireOperator
+  // gates these routes, and role-less maintainers fall back to viewer.
   vi.mocked(getServerSession).mockResolvedValue({
-    user: { id, githubUsername: login, isMaintainer: true },
+    user: { id, githubUsername: login, isMaintainer: true, role: "operator" },
   } as never);
 }
 
