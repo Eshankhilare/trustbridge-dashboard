@@ -107,10 +107,10 @@ interface ContractRegistration {
  * Parse the native value returned by `get_registered_paginated` into a list
  * of contract registrations.
  *
- * The contract may return a Vec of tuples/arrays, a Vec of plain address
- * strings, or a mix of both. Malformed entries (null, non-string addresses,
- * empty addresses, unexpected shapes) are skipped rather than throwing so a
- * single bad row can't abort the whole sync.
+ * Only exact `[address, username]` string pairs are accepted. Bare address
+ * strings, address-only arrays, over-long tuples, and entries with a missing
+ * or non-string address/username are skipped rather than throwing, so a
+ * single bad row can't abort the whole sync or create half-identified rows.
  */
 export function parseContractRegistrations(native: unknown): ContractRegistration[] {
   if (!Array.isArray(native)) {
@@ -120,22 +120,17 @@ export function parseContractRegistrations(native: unknown): ContractRegistratio
   const registrations: ContractRegistration[] = [];
 
   for (const item of native) {
-    if (Array.isArray(item)) {
-      const address = item[0];
-      if (typeof address !== "string" || address.length === 0) {
-        continue;
-      }
-      const username = item.length > 1 ? item[1] : undefined;
-      registrations.push({
-        stellarAddress: address,
-        githubUsername:
-          typeof username === "string" && username.length > 0
-            ? username
-            : undefined,
-      });
-    } else if (typeof item === "string" && item.length > 0) {
-      registrations.push({ stellarAddress: item });
+    if (!Array.isArray(item) || item.length !== 2) {
+      continue;
     }
+    const [address, username] = item;
+    if (typeof address !== "string" || address.length === 0) {
+      continue;
+    }
+    if (typeof username !== "string" || username.length === 0) {
+      continue;
+    }
+    registrations.push({ stellarAddress: address, githubUsername: username });
   }
 
   return registrations;
@@ -218,9 +213,11 @@ async function fetchContractRegistrations(): Promise<{
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Soroban error";
     const failureMode = classifyContractSyncError(error);
+    // Keep the raw message as the error element (callers match on it);
+    // the classification rides along in `failureMode` and the logs.
     return {
       registrations: [],
-      errors: [`Soroban RPC error (${failureMode}): ${message}`],
+      errors: [message],
       failureMode,
     };
   }
@@ -259,7 +256,16 @@ async function syncContractRegistrations(
   );
 
   // Process each contract registration
+  const seenInBatch = new Set<string>();
   for (const contractReg of contractRegistrations) {
+    // De-duplicate repeated addresses within a single payload so counters
+    // stay deterministic no matter how many times an entry repeats.
+    if (seenInBatch.has(contractReg.stellarAddress)) {
+      unchanged++;
+      continue;
+    }
+    seenInBatch.add(contractReg.stellarAddress);
+
     const existing = existingByAddress.get(contractReg.stellarAddress);
 
     if (!existing) {
@@ -273,9 +279,12 @@ async function syncContractRegistrations(
       continue;
     }
 
-    // Check if GitHub username changed
+    // Check if GitHub username changed. A locally-unset (null) username is
+    // left alone: the signup flow owns that field, and chain data must not
+    // backfill it with a potentially stale value.
     if (
       contractReg.githubUsername &&
+      existing.user.githubUsername &&
       existing.user.githubUsername !== contractReg.githubUsername
     ) {
       // Guard against conflicts: only update the linked User when the new
@@ -361,36 +370,85 @@ export async function runContractSync(): Promise<ContractSyncResult> {
       failureMode,
       errors,
     });
+    // `recordAuditLog` never rejects (it swallows persistence errors
+    // internally), so no `.catch` adapter is needed here.
     await recordAuditLog({
-      action: "contract_sync_failed",
-      metadata: { failureMode, errors },
-    }).catch(() => undefined);
+      action: "contract.sync",
+      metadata: { error: errors.join("; "), failureMode, status: "error" },
+    });
     return result;
   }
 
-  const { created, updated, unchanged } = await syncContractRegistrations(
-    registrations
-  );
+  try {
+    const { created, updated, unchanged } = await syncContractRegistrations(
+      registrations
+    );
 
-  const result: ContractSyncResult = {
-    status: "ok",
-    startedAt,
-    durationMs: Date.now() - start,
-    synced: registrations.length,
-    created,
-    updated,
-    unchanged,
-  };
-  lastResult = result;
-  logger.info("contract_sync_completed", {
-    synced: result.synced,
-    created,
-    updated,
-    unchanged,
-  });
-  return result;
+    const result: ContractSyncResult = {
+      status: "ok",
+      startedAt,
+      durationMs: Date.now() - start,
+      synced: registrations.length,
+      created,
+      updated,
+      unchanged,
+    };
+    lastResult = result;
+    logger.info("contract_sync_completed", {
+      synced: result.synced,
+      created,
+      updated,
+      unchanged,
+    });
+    await recordAuditLog({
+      action: "contract.sync",
+      metadata: {
+        synced: result.synced,
+        created,
+        updated,
+        unchanged,
+        status: "ok",
+      },
+    });
+    return result;
+  } catch (error) {
+    // Sync must never throw: schedulers and the status route rely on an
+    // always-resolved result (200/502 with a body, never a 500).
+    const message =
+      error instanceof Error ? error.message : "Unknown sync error";
+    const result: ContractSyncResult = {
+      status: "error",
+      startedAt,
+      durationMs: Date.now() - start,
+      errors: [message],
+    };
+    lastResult = result;
+    logger.error("contract_sync_failed", { error: message });
+    await recordAuditLog({
+      action: "contract.sync",
+      metadata: { error: message },
+    });
+    return result;
+  }
 }
 
 export function getLastContractSyncResult(): ContractSyncResult | null {
   return lastResult;
 }
+
+/**
+ * Reset in-memory sync state (last run timestamp + last result).
+ * Used by tests to isolate sync runs; not for production use.
+ */
+export function resetContractSyncState(): void {
+  lastRunAt = null;
+  lastResult = null;
+}
+
+/**
+ * Canonical entry-point names used by every caller (API routes, health
+ * probes, and tests). Kept as aliases so the failure-mode documentation
+ * work above stays untouched.
+ */
+export const syncContractToPostgres = runContractSync;
+export const getContractSyncHealth = getLastContractSyncResult;

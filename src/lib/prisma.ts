@@ -2,8 +2,6 @@ import "server-only";
 
 import { PrismaClient } from "@prisma/client";
 
-import { isTracingEnabled, withSpan } from "@/lib/tracing";
-
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };

@@ -56,7 +56,9 @@ export async function updateStoredEventCursor(
 }
 
 export async function backfillSorobanEvents(
-  fetchedEvents: SorobanEventRow[],
+  // RPC-fetched events carry a paging token for cursor tracking; the stored
+  // timeline row shape (`SorobanEventRow`) does not, so it is optional here.
+  fetchedEvents: Array<SorobanEventRow & { pagingToken?: string }>,
   options: EventBackfillOptions = {}
 ): Promise<EventBackfillResult> {
   const eventType = options.eventType ?? "contract";

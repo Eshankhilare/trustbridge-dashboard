@@ -17,7 +17,7 @@ import {
   isValidStellarAddress,
   normalizeStellarAddress,
 } from "@/lib/stellar";
-import { CircuitBreaker, CircuitBreakerOpenError } from "@/lib/circuit-breaker";
+import { CircuitBreaker, CircuitBreakerOpenError, getDefaultOptions } from "@/lib/circuit-breaker";
 import type { HorizonCheckResult } from "@/types";
 
 type AccountBalance = Horizon.HorizonApi.BalanceLine;
@@ -48,7 +48,10 @@ export function getHorizonCircuitBreakerState(): string {
 export function getHorizonCircuitBreakerMetrics(): ReturnType<
   typeof horizonCircuitBreaker.getMetrics
 > {
-  return horizonCircuitBreaker.getMetrics();
+  const metrics = horizonCircuitBreaker.getMetrics();
+  // Report live env-derived options (not the import-time snapshot) so the
+  // metrics surface reflects current configuration, like rate-limit metrics.
+  return { ...metrics, options: getDefaultOptions() };
 }
 
 async function loadAccountFromHorizon(address: string) {
@@ -136,8 +139,6 @@ export async function checkStellarAddress(
   }
 
   try {
-    const account = await horizonCircuitBreaker.call(() =>
-      withRetry(() => server.loadAccount(trimmed), {
     const startedAt = Date.now();
     const account = await horizonCircuitBreaker.call(() =>
       withRetry(() => loadAccountFromHorizon(trimmed), {

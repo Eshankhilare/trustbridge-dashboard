@@ -69,13 +69,20 @@ export function verifyWebhookSignature(
     .update(rawBody, "utf8")
     .digest("hex");
 
+  // Validate the hex encoding BEFORE converting: Buffer.from(hex, "hex")
+  // silently drops a trailing nibble on odd-length input, which would let a
+  // "<digest>a" signature pass the byte-length guard below. Compare on the
+  // hex strings so any length or charset deviation fails closed.
+  if (
+    receivedHex.length !== expectedHex.length ||
+    !/^[0-9a-fA-F]+$/.test(receivedHex)
+  ) {
+    return { ok: false, reason: "Signature length mismatch" };
+  }
+
   // Use timingSafeEqual to prevent timing-oracle attacks.
   const expected = Buffer.from(expectedHex, "hex");
   const received = Buffer.from(receivedHex, "hex");
-
-  if (expected.length !== received.length) {
-    return { ok: false, reason: "Signature length mismatch" };
-  }
 
   const match = timingSafeEqual(expected, received);
   return match ? { ok: true } : { ok: false, reason: "Signature mismatch" };

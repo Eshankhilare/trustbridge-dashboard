@@ -1,10 +1,16 @@
 import "server-only";
 
-import { backgroundQueue } from "@/lib/background-queue";
+import type { Prisma } from "@prisma/client";
+
+import { InMemoryBackgroundQueue } from "@/lib/background-queue";
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
+import { recordAuditLog } from "@/lib/audit";
+import { redactString } from "@/lib/sentry";
 import {
   mirrorRegistrationToSoroban,
   type MirrorRegistrationPayload,
+  type MirrorResult,
 } from "@/lib/soroban-register";
 
 /**
@@ -30,11 +36,18 @@ import {
 const workerLogger = logger.child({ subsystem: "soroban-outbox-worker" });
 
 /**
+ * Dedicated in-process queue for Soroban mirror jobs. The durable
+ * Prisma-backed `backgroundQueue` singleton serves the recheck worker loop;
+ * mirror jobs are lightweight and live only for the process lifetime.
+ */
+const inMemoryQueue = new InMemoryBackgroundQueue<MirrorRegistrationPayload>();
+
+/**
  * Process the next pending Soroban mirror job, if any.
  * Returns the job id that was processed, or null if the queue was empty.
  */
 export async function tickSorobanOutboxWorker(): Promise<string | null> {
-  return backgroundQueue.process(async (payload) => {
+  return inMemoryQueue.process(async (payload) => {
     const typed = payload as MirrorRegistrationPayload;
 
     workerLogger.info("soroban_outbox_tick", {
@@ -72,11 +85,8 @@ export function enqueueSorobanMirror(payload: MirrorRegistrationPayload): string
     registrationId: payload.registrationId,
     stellarAddress: payload.stellarAddress,
   });
-  return backgroundQueue.enqueue(payload);
-import { prisma } from "@/lib/prisma";
-import { mirrorRegistrationToSoroban } from "@/lib/soroban-register";
-import { recordAuditLog } from "@/lib/audit";
-import { redactString } from "@/lib/sentry";
+  return inMemoryQueue.enqueue(payload);
+}
 
 const MAX_OUTBOX_ERROR_LENGTH = 2000;
 
@@ -184,7 +194,7 @@ export async function processSorobanOutbox(options: OutboxProcessOptions = {}) {
   const batchSize = options.batchSize ?? 10;
   const maxAttempts = options.maxAttempts ?? 5;
 
-  const where: any = {
+  const where: Prisma.SorobanOutboxWhereInput = {
     status: "PENDING",
     nextAttemptAt: { lte: new Date() },
   };
@@ -215,20 +225,19 @@ export async function processSorobanOutbox(options: OutboxProcessOptions = {}) {
 
     const payload = item.payload as { stellarAddress: string; githubUsername: string; registrationId: string };
 
-    let result;
+    let result: MirrorResult;
     try {
-      result = await mirrorRegistrationToSoroban(
-        {
-          id: payload.registrationId,
-          stellarAddress: payload.stellarAddress,
-          userId: payload.githubUsername,
-        } as any,
-        payload.githubUsername
-      );
+      result = await mirrorRegistrationToSoroban({
+        githubUsername: payload.githubUsername,
+        stellarAddress: payload.stellarAddress,
+        registrationId: payload.registrationId,
+      });
     } catch (error) {
       result = {
         success: false,
-        errors: [error instanceof Error ? error.message : String(error)],
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
       };
     }
 
@@ -244,7 +253,8 @@ export async function processSorobanOutbox(options: OutboxProcessOptions = {}) {
     } else {
       const nextAttempts = item.attempts + 1;
       const isFinalFailure = nextAttempts >= maxAttempts;
-      const lastError = sanitizeOutboxError(result.errors.join("; ")) ?? "Unknown error";
+      const lastError =
+        sanitizeOutboxError(JSON.stringify(result.error)) ?? "Unknown error";
 
       if (isFinalFailure) {
         failedCount++;

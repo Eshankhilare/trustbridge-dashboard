@@ -242,5 +242,3 @@ export async function resolveDualAuth(
 }
 
 export { hasMinimumRole, ROLE_HIERARCHY };
-
-export { hasMinimumRole, ROLE_HIERARCHY };

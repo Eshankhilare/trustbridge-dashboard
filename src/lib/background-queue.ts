@@ -1,14 +1,14 @@
 /**
- * BackgroundQueue — lightweight in-process job queue for fire-and-forget
- * recheck operations that must not block HTTP responses.
+ * InMemoryBackgroundQueue — lightweight in-process job queue for
+ * fire-and-forget operations that must not block HTTP responses.
  *
  * Jobs move through a simple lifecycle:
  *   pending → processing → completed | dlq
  *
  * The dead-letter queue (DLQ) receives jobs that have exhausted their retry
  * budget. All state is in-memory; the queue does not survive a process
- * restart. For persistent scheduling, use a durable queue (e.g. pg-boss)
- * wired to the same `enqueue` / `process` API.
+ * restart. For persistent scheduling, use the durable Prisma-backed
+ * `BackgroundQueue` below with the same conceptual `enqueue` / `process` API.
  *
  * Thread-safety note: Node.js is single-threaded; concurrent reads of the
  * internal maps are safe. Mutations happen only inside the microtask that
@@ -20,13 +20,13 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type JobStatus = "pending" | "processing" | "completed" | "dlq";
+export type InMemoryJobStatus = "pending" | "processing" | "completed" | "dlq";
 
-export interface Job<T = unknown> {
+export interface InMemoryJob<T = unknown> {
   id: string;
   /** Arbitrary payload — not exposed externally to keep the API narrow. */
   payload: T;
-  status: JobStatus;
+  status: InMemoryJobStatus;
   /** ISO-8601 string set when the job is first enqueued. */
   enqueuedAt: string;
   /** ISO-8601 string set each time the job begins processing. */
@@ -39,8 +39,8 @@ export interface Job<T = unknown> {
   lastError: string | null;
 }
 
-/** Shape returned by {@link BackgroundQueue.getWorkerHealthMetrics}. */
-export interface WorkerHealthMetrics {
+/** Shape returned by {@link InMemoryBackgroundQueue.getWorkerHealthMetrics}. */
+export interface InMemoryWorkerHealthMetrics {
   /** Jobs awaiting their first (or next) processing attempt. */
   pendingCount: number;
   /** Jobs currently being processed. */
@@ -81,9 +81,9 @@ function nextJobId(): string {
   return `job-${_idCounter}-${Date.now()}`;
 }
 
-export class BackgroundQueue<T = unknown> {
+export class InMemoryBackgroundQueue<T = unknown> {
   /** All jobs keyed by their id, regardless of status. */
-  private readonly jobs = new Map<string, Job<T>>();
+  private readonly jobs = new Map<string, InMemoryJob<T>>();
 
   private lastProcessedAt: string | null = null;
   private workerStartedAt: string | null = null;
@@ -108,7 +108,7 @@ export class BackgroundQueue<T = unknown> {
     }
 
     const id = nextJobId();
-    const job: Job<T> = {
+    const job: InMemoryJob<T> = {
       id,
       payload,
       status: "pending",
@@ -168,7 +168,7 @@ export class BackgroundQueue<T = unknown> {
    * Return a read-only snapshot of all current job metrics. Safe to call
    * concurrently — does not mutate any internal state.
    */
-  getWorkerHealthMetrics(): WorkerHealthMetrics {
+  getWorkerHealthMetrics(): InMemoryWorkerHealthMetrics {
     let pendingCount = 0;
     let processingCount = 0;
     let completedCount = 0;
@@ -216,7 +216,7 @@ export class BackgroundQueue<T = unknown> {
    * Return the count of jobs in a given status. Convenience accessor for
    * tests that need targeted assertions without reading the full metrics shape.
    */
-  size(status?: JobStatus): number {
+  size(status?: InMemoryJobStatus): number {
     if (!status) return this.jobs.size;
     let count = 0;
     for (const job of Array.from(this.jobs.values())) {
@@ -229,7 +229,7 @@ export class BackgroundQueue<T = unknown> {
   // Private helpers
   // -------------------------------------------------------------------------
 
-  private firstPending(): Job<T> | undefined {
+  private firstPending(): InMemoryJob<T> | undefined {
     for (const job of Array.from(this.jobs.values())) {
       if (job.status === "pending") return job;
     }
@@ -238,10 +238,9 @@ export class BackgroundQueue<T = unknown> {
 }
 
 /**
- * Module-level singleton for use by API routes and server-side job producers.
- * Import and use `backgroundQueue` rather than instantiating a new instance
- * per request, so that the in-memory job maps are shared across invocations
- * within the same Node.js process.
+ * Durable Prisma-backed queue (see below). The in-memory queue above is a
+ * separate implementation — instantiate `InMemoryBackgroundQueue` directly;
+ * there is no shared module-level singleton for it.
  */
 import "server-only";
 
@@ -297,6 +296,21 @@ export interface QueueMetrics {
   completedCount: number;
   failedCount: number;
   averageProcessingTimeMs: number;
+}
+
+/**
+ * Health snapshot returned by {@link BackgroundQueue.getWorkerHealthMetrics}
+ * for the queue health endpoint.
+ */
+export interface QueueWorkerHealth {
+  /** Number of jobs awaiting processing. */
+  depth: number;
+  /** Number of jobs in the dead-letter (failed) state. */
+  failedCount: number;
+  /** ISO-8601 creation time of the oldest pending job, if any. */
+  oldestPendingJobCreatedAt: string | null;
+  /** Always true: polling is constrained to request lifecycles serverless. */
+  isServerlessInMemoryWarning: boolean;
 }
 
 export type JobHandler = (job: Job) => Promise<void>;
@@ -400,6 +414,31 @@ export class BackgroundQueue {
       completedCount,
       failedCount,
       averageProcessingTimeMs,
+    };
+  }
+
+  /**
+   * Worker health snapshot for the queue health endpoint
+   * (`GET /api/contributors/queue/health`). Response shape is pinned by
+   * `src/app/api/contributors/queue/health/route.test.ts`.
+   */
+  async getWorkerHealthMetrics(): Promise<QueueWorkerHealth> {
+    const [depth, failedCount, oldestPending] = await Promise.all([
+      prisma.queueJob.count({ where: { status: "pending" } }),
+      prisma.queueJob.count({ where: { status: "failed" } }),
+      prisma.queueJob.findFirst({
+        where: { status: "pending" },
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    return {
+      depth,
+      failedCount,
+      oldestPendingJobCreatedAt:
+        oldestPending?.createdAt.toISOString() ?? null,
+      isServerlessInMemoryWarning: true,
     };
   }
 

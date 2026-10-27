@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 
@@ -35,16 +37,41 @@ export async function isMaintainer(
 }
 
 /**
+ * Auth sources `getMaintainerContext` understands: a NextAuth session user
+ * or an API-key auth record.
+ */
+export type MaintainerAuthSource =
+  | {
+      user?: {
+        id?: string;
+        maintainerOrgId?: string;
+        isMaintainer?: boolean;
+        role?: string;
+      } | null;
+    }
+  | {
+      maintainerOrgId?: string;
+      keyId?: string;
+      createdById?: string;
+      id?: string;
+      role?: string;
+    }
+  | null
+  | undefined;
+
+/**
  * Resolves maintainer context from a session or API key auth source,
  * ensuring consistent org scoping across both auth paths.
  */
-export function getMaintainerContext(authSource?: any): MaintainerContext {
+export function getMaintainerContext(
+  authSource?: MaintainerAuthSource
+): MaintainerContext {
   if (!authSource) {
     return { maintainerOrgId: "default", isMaintainer: false };
   }
 
   // NextAuth Session format
-  if (authSource.user) {
+  if ("user" in authSource && authSource.user) {
     return {
       userId: authSource.user.id,
       maintainerOrgId: authSource.user.maintainerOrgId ?? "default",
@@ -53,8 +80,12 @@ export function getMaintainerContext(authSource?: any): MaintainerContext {
     };
   }
 
-  // API Key auth format
-  if (authSource.maintainerOrgId || authSource.keyId) {
+  // API Key auth format — requires a truthy org, key id, or creator id.
+  if (
+    ("maintainerOrgId" in authSource && authSource.maintainerOrgId) ||
+    ("keyId" in authSource && authSource.keyId) ||
+    ("createdById" in authSource && authSource.createdById)
+  ) {
     return {
       userId: authSource.createdById ?? authSource.id,
       maintainerOrgId: authSource.maintainerOrgId ?? "default",
@@ -82,7 +113,7 @@ export async function appendRegistrationNote(input: MaintainerNoteInput) {
     return null;
   }
 
-  const whereClause: any = {
+  const whereClause: Prisma.RegistrationWhereInput = {
     id: input.registrationId,
   };
   if (input.maintainerOrgId) {
@@ -140,21 +171,19 @@ export async function recordRegistrationConflict(input: {
   existingRegistrationId?: string;
 }) {
   const orgId = input.maintainerOrgId ?? "default";
-  let conflict: any = null;
+  let conflict: { id: string } | null = null;
 
-  if ((prisma as any).registrationConflict?.create) {
-    try {
-      conflict = await (prisma as any).registrationConflict.create({
-        data: {
-          attemptedAddress: input.attemptedAddress,
-          attemptedUserId: input.attemptedUserId,
-          existingUserId: input.existingUserId,
-          maintainerOrgId: orgId,
-        },
-      });
-    } catch (err) {
-      console.error("Failed to record RegistrationConflict:", err);
-    }
+  try {
+    conflict = await prisma.registrationConflict.create({
+      data: {
+        attemptedAddress: input.attemptedAddress,
+        attemptedUserId: input.attemptedUserId,
+        existingUserId: input.existingUserId,
+        maintainerOrgId: orgId,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to record RegistrationConflict:", err);
   }
 
   await recordAuditLog({
@@ -179,16 +208,12 @@ export async function listRegistrationConflicts(options?: {
   maintainerOrgId?: string;
   limit?: number;
 }): Promise<ConflictSummary[]> {
-  const where: any = {};
+  const where: Prisma.RegistrationConflictWhereInput = {};
   if (options?.maintainerOrgId) {
     where.maintainerOrgId = options.maintainerOrgId;
   }
 
-  if (!(prisma as any).registrationConflict?.findMany) {
-    return [];
-  }
-
-  return (prisma as any).registrationConflict.findMany({
+  return prisma.registrationConflict.findMany({
     where: Object.keys(where).length > 0 ? where : undefined,
     orderBy: { createdAt: "desc" },
     take: options?.limit ?? 100,
@@ -209,7 +234,7 @@ export async function listDeletedRegistrations(options?: {
   const { encodeCursor, decodeCursor } = await import("@/lib/cursor-pagination");
   const decodedCursor = cursor ? decodeCursor(cursor) : null;
 
-  const where: any = { deletedAt: { not: null } };
+  const where: Prisma.RegistrationWhereInput = { deletedAt: { not: null } };
   if (options?.maintainerOrgId) {
     where.maintainerOrgId = options.maintainerOrgId;
   }

@@ -128,15 +128,15 @@ export async function checkWalletReuseAnomaly(
 
   try {
     const grouped = await prisma.addressHistoryRecord.groupBy({
-      by: ["address"],
+      by: ["newAddress"],
       where: {
         recordedAt: { gte: windowStart },
       },
-      _count: { address: true },
+      _count: { newAddress: true },
     });
 
     const maxReuse = grouped.reduce(
-      (max, row) => Math.max(max, row._count.address),
+      (max, row) => Math.max(max, row._count?.newAddress ?? 0),
       0
     );
 
@@ -170,15 +170,15 @@ export async function checkMultiAccountAnomaly(
 
   try {
     const grouped = await prisma.addressHistoryRecord.groupBy({
-      by: ["actorId"],
+      by: ["userId"],
       where: {
         recordedAt: { gte: windowStart },
       },
-      _count: { actorId: true },
+      _count: { userId: true },
     });
 
     const maxAccounts = grouped.reduce(
-      (max, row) => Math.max(max, row._count.actorId),
+      (max, row) => Math.max(max, row._count?.userId ?? 0),
       0
     );
 

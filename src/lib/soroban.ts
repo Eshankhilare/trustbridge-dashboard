@@ -1,6 +1,6 @@
 import "server-only";
 
-import { rpc, scValToNative, xdr, Contract, TransactionBuilder, Account, Networks, nativeToScVal } from "stellar-sdk";
+import { rpc, scValToNative, xdr, Contract, TransactionBuilder, Account, nativeToScVal } from "stellar-sdk";
 
 import type { SorobanEventRow, SorobanEventTimelineResponse } from "@/types";
 

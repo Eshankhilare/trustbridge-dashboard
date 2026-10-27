@@ -527,6 +527,67 @@ export function generateOpenAPISpec(
           },
         },
       },
+      "/api/maintainer/ban": {
+        post: {
+          operationId: "manageContributorBan",
+          summary: "Ban or unban a contributor",
+          description: "Maintainer-only, same-origin request. Bans require a mandatory reason; unbans do not.",
+          tags: ["Maintainers"],
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/BanRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Contributor banned or unbanned",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/BanResponse" },
+                },
+              },
+            },
+            "400": { description: "Missing githubUsername, missing ban reason, or invalid action" },
+            "403": { description: "Forbidden: maintainer access required" },
+            "500": { description: "Failed to execute ban action" },
+          },
+        },
+      },
+      "/api/registrations/{id}/restore": {
+        post: {
+          operationId: "restoreRegistration",
+          summary: "Restore a soft-deleted registration",
+          description: "Maintainer-only, same-origin request. Restores a soft-deleted registration by id.",
+          tags: ["Registrations"],
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+              description: "ID of the soft-deleted registration to restore",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Registration restored",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/RestoreRegistrationResponse" },
+                },
+              },
+            },
+            "403": { description: "Forbidden: maintainer access required" },
+            "404": { description: "Registration not found" },
+            "409": { description: "Registration is not deleted" },
+          },
+        },
+      },
       "/api/actions/lookup": {
         get: {
           operationId: "lookupAction",
@@ -707,8 +768,8 @@ export function generateOpenAPISpec(
             },
           },
           responses: {
-            "200": {
-              description: "Webhook accepted",
+            "202": {
+              description: "Webhook accepted for processing",
             },
             "400": {
               description: "Invalid webhook payload",
@@ -777,13 +838,6 @@ export function generateOpenAPISpec(
             registration: {
               $ref: "#/components/schemas/Registration",
             },
-          },
-        },
-        ErrorResponse: {
-          type: "object",
-          required: ["error"],
-          properties: {
-            error: { type: "string" },
           },
         },
         Registration: {
@@ -1142,5 +1196,45 @@ export function generateOpenAPISpec(
         },
       },
     },
+  };
+}
+
+/**
+ * Validates the generated OpenAPI spec.
+ *
+ * Restored: the implementation was dropped by a bad merge even though
+ * `src/app/api/openapi.json/route.ts` and `src/lib/openapi-spec.test.ts`
+ * both depend on it.
+ */
+export function validateOpenAPISpec(spec: OpenAPISpec): {
+  valid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+
+  // Check required top-level fields
+  if (!spec.openapi) errors.push("Missing openapi version");
+  if (!spec.info) errors.push("Missing info object");
+  if (!spec.paths) errors.push("Missing paths object");
+
+  // Check info object
+  if (spec.info) {
+    if (!spec.info.title) errors.push("Missing info.title");
+    if (!spec.info.version) errors.push("Missing info.version");
+  }
+
+  // Check servers
+  if (!spec.servers || spec.servers.length === 0) {
+    errors.push("No servers defined");
+  }
+
+  // Check paths
+  if (spec.paths && Object.keys(spec.paths).length === 0) {
+    errors.push("No API paths defined");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
   };
 }

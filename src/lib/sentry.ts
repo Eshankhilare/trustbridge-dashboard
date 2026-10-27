@@ -219,7 +219,9 @@ function resolveClient(): SentryClient {
   if (!dsn) return noopClient;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // Optional peer dependency: @sentry/nextjs is intentionally NOT installed.
+    // Lazy require keeps plain deployments working without an install step.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Sentry = require("@sentry/nextjs") as {
       captureException: (error: unknown, context?: Record<string, unknown>) => string;
       captureMessage: (message: string, level?: SentryLevel) => string;
@@ -244,6 +246,14 @@ function resolveClient(): SentryClient {
 }
 
 let cachedClient: SentryClient | null = null;
+
+/**
+ * Test-only hook: drop the cached client so DSN/env changes take effect
+ * between tests. Production code must never call this.
+ */
+export function _resetSentryClient(): void {
+  cachedClient = null;
+}
 
 /**
  * The active Sentry client. Resolved lazily on first use so that importing
@@ -322,5 +332,57 @@ export async function flush(timeout = 2000): Promise<boolean> {
     return await getSentryClient().flush(timeout);
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether Sentry reporting is active (a non-blank DSN is configured).
+ * False in no-op mode — all helpers degrade silently.
+ */
+export function isSentryEnabled(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim());
+}
+
+/**
+ * Flush buffered events. Alias kept for the pre-#418 helper name.
+ * Useful in serverless handlers and tests. Never throws.
+ */
+export async function flushSentry(timeout = 2000): Promise<boolean> {
+  return flush(timeout);
+}
+
+/**
+ * Associate subsequent events with a user. Alias kept for the pre-#418
+ * helper name. Never throws.
+ */
+export function setSentryUser(
+  user: { id?: string; username?: string } | null
+): void {
+  setUser(user);
+}
+
+/**
+ * Report an exception with user + scope context attached.
+ * Never throws: returns "" when reporting is unavailable.
+ */
+export function captureExceptionWithScope(
+  error: unknown,
+  user?: { id?: string; username?: string } | null,
+  context?: Record<string, unknown>,
+  level: SentryLevel = "error"
+): string {
+  try {
+    withScope((scope) => {
+      if (user) scope.setUser(user);
+      if (context) {
+        for (const [key, value] of Object.entries(context)) {
+          scope.setExtra(key, value);
+        }
+      }
+      scope.setLevel(level);
+    });
+    return captureException(error, context);
+  } catch {
+    return "";
   }
 }

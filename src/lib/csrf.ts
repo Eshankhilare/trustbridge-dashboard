@@ -136,10 +136,7 @@ const CSRF_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 /**
  * Issues a signed, timestamped CSRF token bound to the specified userId.
  */
-export function generateCsrfToken(
-  userId: string,
-  ttlMs: number = CSRF_EXPIRY_MS
-): string {
+export function generateCsrfToken(userId: string): string {
   if (!userId) {
     throw new Error("userId is required to generate a CSRF token");
   }

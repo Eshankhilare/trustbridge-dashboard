@@ -14,7 +14,12 @@ export interface CircuitBreakerTripEvent {
 
 const MAX_TRIP_HISTORY = 20;
 
-function getDefaultOptions(): CircuitBreakerOptions {
+/**
+ * Resolve the breaker options from the current environment. Exported so
+ * metrics surfaces can report live config (matching rate-limit behavior)
+ * instead of import-time snapshots.
+ */
+export function getDefaultOptions(): CircuitBreakerOptions {
   const failureThreshold = Number.parseInt(
     process.env.HORIZON_CB_FAILURE_THRESHOLD ?? "5",
     10
@@ -180,7 +185,7 @@ export function getCircuitBreakerFor(
   return upstream === "soroban" ? sorobanCircuitBreaker : horizonCircuitBreaker;
 }
 
-export interface DegradedResult<T> {
+export interface DegradedResult {
   ok: false;
   degraded: true;
   upstream: OutboundUpstream;
@@ -195,7 +200,7 @@ export interface SuccessResult<T> {
   data: T;
 }
 
-export type BreakerResult<T> = SuccessResult<T> | DegradedResult<T>;
+export type BreakerResult<T> = SuccessResult<T> | DegradedResult;
 
 /**
  * Run an outbound call through the breaker for the given upstream and return a

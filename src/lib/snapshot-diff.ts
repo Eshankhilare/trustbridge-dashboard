@@ -41,13 +41,6 @@ export class SnapshotParseError extends Error {
   }
 }
 
-function unescapeCsvCell(cell: string): string {
-  if (cell.startsWith('"') && cell.endsWith('"')) {
-    return cell.slice(1, -1).replace(/""/g, '"');
-  }
-  return cell;
-}
-
 export function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = "";

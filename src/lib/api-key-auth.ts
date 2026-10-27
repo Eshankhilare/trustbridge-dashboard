@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { recordAuditLog } from "@/lib/audit";
-import { ApiKeyScope, API_KEY_SCOPES, hasApiKeyScope } from "@/lib/api-key-scopes";
+import { ApiKeyScope, hasApiKeyScope } from "@/lib/api-key-scopes";
 import { hashApiKey, isValidApiKeyFormat } from "@/lib/api-key-crypto";
 import { prisma } from "@/lib/prisma";
 import {

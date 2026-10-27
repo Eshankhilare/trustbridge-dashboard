@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import type { HorizonCheckResult, ReadinessStatus } from "@/types";
 import {
   CircuitBreaker,
-  CircuitOpenError,
-  type CircuitBreakerOptions,
+  CircuitBreakerOpenError,
 } from "@/lib/circuit-breaker";
 
 export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
@@ -17,8 +16,8 @@ export const SOROBAN_BREAKER_NAME = "soroban";
  * per upstream keeps state consistent across requests so a Horizon or Soroban
  * outage trips once and short-circuits subsequent calls instead of cascading.
  */
-export const horizonBreaker = new CircuitBreaker(HORIZON_BREAKER_NAME);
-export const sorobanBreaker = new CircuitBreaker(SOROBAN_BREAKER_NAME);
+export const horizonBreaker = new CircuitBreaker();
+export const sorobanBreaker = new CircuitBreaker();
 
 export function emptyCheckResult(
   readiness: ReadinessStatus = "not_ready",
@@ -44,9 +43,8 @@ export function emptyCheckResult(
  */
 export async function withHorizonBreaker<T>(
   fn: () => Promise<T>,
-  options?: CircuitBreakerOptions,
 ): Promise<T> {
-  return horizonBreaker.execute(fn, options);
+  return horizonBreaker.call(fn);
 }
 
 /**
@@ -55,9 +53,8 @@ export async function withHorizonBreaker<T>(
  */
 export async function withSorobanBreaker<T>(
   fn: () => Promise<T>,
-  options?: CircuitBreakerOptions,
 ): Promise<T> {
-  return sorobanBreaker.execute(fn, options);
+  return sorobanBreaker.call(fn);
 }
 
 /**
@@ -69,7 +66,7 @@ export function describeBreakerError(error: unknown): {
   message: string;
   degraded: boolean;
 } {
-  if (error instanceof CircuitOpenError) {
+  if (error instanceof CircuitBreakerOpenError) {
     return {
       message:
         "Stellar network is temporarily unavailable. Please retry shortly.",
@@ -99,10 +96,21 @@ export function jsonCheckError(
   errors: string[],
   status: number,
   readiness: ReadinessStatus = "not_ready",
+  headers?: HeadersInit
 ) {
-  return NextResponse.json(emptyCheckResult(readiness, errors), { status });
+  return NextResponse.json(emptyCheckResult(readiness, errors), {
+    status,
+    ...(headers ? { headers } : {}),
+  });
 }
 
-export function jsonCheckResult(result: HorizonCheckResult, status = 200) {
-  return NextResponse.json(result, { status });
+export function jsonCheckResult(
+  result: HorizonCheckResult,
+  status = 200,
+  headers?: HeadersInit
+) {
+  return NextResponse.json(result, {
+    status,
+    ...(headers ? { headers } : {}),
+  });
 }

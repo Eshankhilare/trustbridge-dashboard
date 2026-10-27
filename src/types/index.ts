@@ -175,18 +175,6 @@ export type OnboardingChecklistKey =
   | "addressRegistered"
   | "readinessConfirmed";
 
-/**
- * Maps each checklist step to a completion boolean.
- * Unknown keys from the server are ignored at the UI layer; partial updates
- * must not wipe steps that are already completed.
- *
- * Initialise as `{}` (all steps pending) and merge incoming PATCH payloads
- * with `{ ...existing, ...incoming }` so completed steps are never cleared.
- */
-export type OnboardingChecklistState = Partial<
-  Record<OnboardingChecklistKey, boolean>
->;
-
 export type StellarNetwork = "mainnet" | "testnet" | "custom";
 
 /**

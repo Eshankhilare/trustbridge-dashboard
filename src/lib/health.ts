@@ -105,6 +105,8 @@ export function parseHealthResponse(payload: unknown): HealthResponse | null {
   const contractSync = asRecord(checks.contractSync);
 
   const dbError = database && typeof database.error === "string" ? database.error : undefined;
+  const queue = asRecord(checks.queue);
+  const queueError = queue && typeof queue.error === "string" ? queue.error : undefined;
   const contractSyncError =
     contractSync && typeof contractSync.lastError === "string"
       ? contractSync.lastError
@@ -122,6 +124,11 @@ export function parseHealthResponse(payload: unknown): HealthResponse | null {
       horizon: {
         status: horizon && isHealthStatus(horizon.status) ? horizon.status : "degraded",
         latencyMs: asNumber(horizon?.latencyMs),
+      },
+      queue: {
+        status: queue && isHealthStatus(queue.status) ? queue.status : "degraded",
+        latencyMs: asNumber(queue?.latencyMs),
+        ...(queueError ? { error: queueError } : {}),
       },
       sorobanRpc: {
         status: sorobanRpc && isHealthStatus(sorobanRpc.status) ? sorobanRpc.status : "degraded",

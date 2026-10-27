@@ -63,7 +63,12 @@ export async function recordNetworkSwitchAudit(input: {
       fromNetwork: input.fromNetwork,
       toNetwork: input.toNetwork,
       confirmed: input.confirmed,
-* Persist a maintainer action to the audit log, surfacing failures.
+    },
+  });
+}
+
+/**
+ * Persist a maintainer action to the audit log, surfacing failures.
  *
  * Unlike {@link recordAuditLog}, this variant rejects when the audit write
  * fails. Use it for privileged flows (e.g. ban appeal notes) where an

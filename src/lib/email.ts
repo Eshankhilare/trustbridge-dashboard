@@ -252,7 +252,7 @@ async function sendViaResend(
     }
 
     await withRetry(
-      async (attempt) => {
+      async () => {
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
