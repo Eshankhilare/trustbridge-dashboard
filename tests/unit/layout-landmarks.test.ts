@@ -30,7 +30,7 @@ describe("src/app/layout.tsx", () => {
   it("puts the skip link before the app shell", () => {
     // It has to be the first focusable element, or it is not a skip link.
     expect(source.indexOf('href="#main-content"')).toBeLessThan(
-      source.indexOf("<Providers>")
+      source.indexOf("<Providers")
     );
   });
 

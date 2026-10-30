@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run prisma:generate && node scripts/next-build.mjs",
-    "vercel-build": "npm run db:deploy && npm run build",
+    "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "worker": "node scripts/worker.mjs",
     "lint": "next lint",

@@ -133,6 +133,29 @@ Open [http://localhost:3000](http://localhost:3000).
 
 > **GitHub OAuth callback URL (local):** `http://localhost:3000/api/auth/callback/github`
 
+### Public demo mode (no credentials required)
+
+For a public portfolio/demo deployment, enable the isolated `/demo` route:
+
+```bash
+NEXT_PUBLIC_DEMO_MODE=true
+npm install
+npm run build
+npm start
+```
+
+Open [http://localhost:3000/demo](http://localhost:3000/demo). The demo:
+
+- Uses synthetic contributors, wallet addresses, balances, readiness statuses, and activity events.
+- Works without GitHub OAuth, PostgreSQL, Horizon, or Soroban credentials.
+- Never calls the authenticated contributor APIs or writes to the database.
+- Supports search, filters, sorting, pagination, column customization, CSV/JSON export, per-row demo re-checks, and local ban/unban actions.
+- Clearly labels all sample data as **DEMO**.
+
+When demo mode is enabled, unauthenticated visits to `/dashboard` redirect to `/demo`. The real dashboard, registration flow, and APIs keep their normal authentication and authorization checks. `NEXT_PUBLIC_DEMO_MODE` is a public build-time flag; never place secrets in it.
+
+Disable demo mode (`NEXT_PUBLIC_DEMO_MODE=false` or unset) for production deployments that serve real maintainer data.
+
 ---
 
 ## Documentation
@@ -178,8 +201,9 @@ Full index: [docs/README.md](./docs/README.md)
 | Route | Auth | Description |
 |-------|------|-------------|
 | `/` | Public | Landing page, TrustBridge explainer, Wave stats |
+| `/demo` | Public when `NEXT_PUBLIC_DEMO_MODE=true` | Isolated synthetic-data dashboard demo |
 | `/register` | GitHub OAuth | Contributor Stellar address registration |
-| `/dashboard` | GitHub OAuth + org member | Maintainer payout readiness table |
+| `/dashboard` | GitHub OAuth + org member | Maintainer payout readiness table (redirects to `/demo` when demo mode is on and the visitor is signed out) |
 | `/dashboard/metrics` | GitHub OAuth + org member | Admin metrics: readiness counts, audit activity, ops config |
 
 ### API routes
@@ -274,6 +298,7 @@ Admins can replay a membership payload with `POST /api/webhooks/github-org-membe
 Copy `.env.example` to `.env.local` and configure:
 
 ```bash
+NEXT_PUBLIC_DEMO_MODE=false  # true enables the public /demo route (synthetic data only)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 NEXTAUTH_URL=http://localhost:3000
@@ -436,6 +461,17 @@ This project is optimized for **Vercel**:
 6. Set GitHub OAuth callback to `https://your-domain.vercel.app/api/auth/callback/github`
 
 Full checklist: [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)
+
+### Public demo deployment
+
+For a no-credential portfolio demo on Vercel (or any Node host):
+
+1. Import the repository and set `NEXT_PUBLIC_DEMO_MODE=true` in the build environment.
+2. No database, GitHub OAuth app, Horizon, or Soroban credentials are required for `/demo`.
+3. Build and deploy. `vercel-build` automatically skips `prisma migrate deploy` in demo mode, the landing page links to `/demo`, and `/dashboard` redirects visitors there.
+4. To run the real product later, set `NEXT_PUBLIC_DEMO_MODE=false` and configure the variables in [docs/ENVIRONMENT.md](./docs/ENVIRONMENT.md).
+
+> Demo mode only exposes synthetic local data. It does not relax authentication on real APIs or the real dashboard.
 
 ---
 

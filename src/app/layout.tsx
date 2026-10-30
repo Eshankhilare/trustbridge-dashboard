@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Providers } from "@/components/Providers";
+import { isDemoModeEnabled } from "@/lib/demo-mode";
 import { getMaintenanceMessage, isMaintenanceMode } from "@/lib/maintenance";
 
 import "./globals.css";
@@ -43,6 +44,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const maintenance = await isMaintenanceMode();
+  const demoMode = isDemoModeEnabled();
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -86,7 +88,7 @@ if ('serviceWorker' in navigator) {
         >
           Skip to main content
         </a>
-        <Providers>
+        <Providers demoMode={demoMode}>
           <MaintenanceBanner
             enabled={maintenance}
             message={getMaintenanceMessage()}

@@ -1,9 +1,15 @@
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
+import { redirect } from "next/navigation";
 
+import { isDemoModeEnabled } from "@/lib/demo-mode";
 import { RegisterClient } from "./RegisterClient";
 
 export default function RegisterPage() {
+  if (isDemoModeEnabled()) {
+    redirect("/demo");
+  }
+
   return (
     <Suspense
       fallback={

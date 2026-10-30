@@ -72,6 +72,8 @@ interface ContributorTableProps {
    * column visibility and order stay local to this table only.
    */
   columnPreferencesEndpoint?: string | null;
+  /** Marks the table and its accessible caption as synthetic demo data. */
+  demoMode?: boolean;
   className?: string;
 }
 
@@ -354,6 +356,7 @@ export function ContributorTable({
   viewerRole = "maintainer",
   registerUrl = "/register",
   columnPreferencesEndpoint = null,
+  demoMode = false,
   className,
 }: ContributorTableProps) {
   const headingId = useId();
@@ -729,6 +732,7 @@ export function ContributorTable({
       tabIndex={-1}
       className={cn("space-y-4 outline-none", className)}
       data-testid="contributor-table-region"
+      data-demo={demoMode ? "true" : undefined}
     >
       <h2 id={headingId} className="sr-only">
         Contributor payout readiness
@@ -1091,6 +1095,7 @@ export function ContributorTable({
       <div className="hidden overflow-x-auto rounded-xl border md:block">
         <table className="w-full min-w-[880px] text-sm">
           <caption className="sr-only">
+            {demoMode ? "DEMO DATA — synthetic contributors only. " : ""}
             Contributor payout readiness table with per-row Horizon debug details
             and Freighter proof guidance.
           </caption>

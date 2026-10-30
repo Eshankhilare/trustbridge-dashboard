@@ -74,6 +74,9 @@ export function parseDatabasePoolConfig(urlStr: string): DatabasePoolConfig {
  * Validates all required and optional configuration at application boot.
  */
 const envSchema = z.object({
+  // Optional: enables the isolated, synthetic-data /demo experience.
+  NEXT_PUBLIC_DEMO_MODE: z.enum(["true", "false"]).optional().default("false"),
+
   // Required: authentication
   GITHUB_CLIENT_ID: z.string().min(1, "GITHUB_CLIENT_ID is required"),
   GITHUB_CLIENT_SECRET: z.string().min(1, "GITHUB_CLIENT_SECRET is required"),

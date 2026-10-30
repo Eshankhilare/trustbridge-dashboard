@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import type { Session } from "next-auth";
 import { signIn, signOut, useSession } from "next-auth/react";
 import {
   LayoutDashboard,
@@ -18,6 +19,7 @@ import { GitHubIcon } from "@/components/icons/GitHubIcon";
 import { NotificationBell } from "@/components/NotificationBell";
 import { OrgSwitcher } from "@/components/OrgSwitcher";
 import { SignInButton } from "@/components/SignInButton";
+import { isDemoModeEnabled } from "@/lib/demo-mode";
 import { useI18n } from "@/lib/i18n-context";
 
 import { Button } from "@/components/ui/button";
@@ -72,6 +74,7 @@ function LocaleSwitcher() {
 function LocaleSwitcherMobile() {
   const { locale, setLocale } = useI18n();
 
+
   return (
     <div className="flex gap-1">
       {LOCALES.map((l) => (
@@ -88,8 +91,15 @@ function LocaleSwitcherMobile() {
       ))}
     </div>
   );
-}export function Header() {
-  const { data: session } = useSession();
+}
+
+function HeaderContent({
+  session,
+  demoMode,
+}: {
+  session: Session | null;
+  demoMode: boolean;
+}) {
   const { theme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = React.useState(false);
 
@@ -170,6 +180,11 @@ function LocaleSwitcherMobile() {
               TB
             </span>
             <span className="tracking-tight">TrustBridge</span>
+            {demoMode && (
+              <span className="rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200">
+                DEMO
+              </span>
+            )}
           </Link>
         </div>
 
@@ -181,19 +196,25 @@ function LocaleSwitcherMobile() {
           <Link href="/" className={navLinkClass}>
             Home
           </Link>
-          {session ? (
-            <Link href="/register" className={navLinkClass}>
-              Register
+          {demoMode && (
+            <Link href="/demo" className={navLinkClass}>
+              Live demo
             </Link>
-          ) : (
-            <button
-              type="button"
-              className={navLinkClass}
-              onClick={() => signIn("github", { callbackUrl: "/register" })}
-            >
-              Register
-            </button>
           )}
+          {!demoMode &&
+            (session ? (
+              <Link href="/register" className={navLinkClass}>
+                Register
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className={navLinkClass}
+                onClick={() => signIn("github", { callbackUrl: "/register" })}
+              >
+                Register
+              </button>
+            ))}
           {session?.user?.isMaintainer && (
             <Link href="/dashboard" className={navLinkClass}>
               Dashboard
@@ -254,6 +275,10 @@ function LocaleSwitcherMobile() {
                 Sign out
               </Button>
             </div>
+          ) : demoMode ? (
+            <Button asChild variant="stellar" size="sm">
+              <Link href="/demo">Live demo</Link>
+            </Button>
           ) : (
             <SignInButton variant="stellar" size="sm" callbackUrl="/register">
               <GitHubIcon className="h-4 w-4" />
@@ -261,29 +286,30 @@ function LocaleSwitcherMobile() {
             </SignInButton>
           )}
 
-          {session ? (
-            <Button
-              asChild
-              variant="cyan"
-              size="sm"
-              className="hidden sm:inline-flex"
-            >
-              <Link href="/register">
+          {!demoMode &&
+            (session ? (
+              <Button
+                asChild
+                variant="cyan"
+                size="sm"
+                className="hidden sm:inline-flex"
+              >
+                <Link href="/register">
+                  <UserPlus className="h-4 w-4" />
+                  Register
+                </Link>
+              </Button>
+            ) : (
+              <SignInButton
+                variant="cyan"
+                size="sm"
+                className="hidden sm:inline-flex"
+                callbackUrl="/register"
+              >
                 <UserPlus className="h-4 w-4" />
                 Register
-              </Link>
-            </Button>
-          ) : (
-            <SignInButton
-              variant="cyan"
-              size="sm"
-              className="hidden sm:inline-flex"
-              callbackUrl="/register"
-            >
-              <UserPlus className="h-4 w-4" />
-              Register
-            </SignInButton>
-          )}
+              </SignInButton>
+            ))}
 
           {session?.user?.isMaintainer && (
             <Button
@@ -356,26 +382,36 @@ function LocaleSwitcherMobile() {
               <Link href="/" className={cn(navLinkClass, "rounded-md px-3 py-2")} onClick={closeMenu}>
                 Home
               </Link>
-              {session ? (
+              {demoMode && (
                 <Link
-                  href="/register"
+                  href="/demo"
                   className={cn(navLinkClass, "rounded-md px-3 py-2")}
                   onClick={closeMenu}
                 >
-                  Register
+                  Live demo
                 </Link>
-              ) : (
-                <button
-                  type="button"
-                  className={cn(navLinkClass, "rounded-md px-3 py-2 text-left")}
-                  onClick={() => {
-                    closeMenu();
-                    signIn("github", { callbackUrl: "/register" });
-                  }}
-                >
-                  Register
-                </button>
               )}
+              {!demoMode &&
+                (session ? (
+                  <Link
+                    href="/register"
+                    className={cn(navLinkClass, "rounded-md px-3 py-2")}
+                    onClick={closeMenu}
+                  >
+                    Register
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className={cn(navLinkClass, "rounded-md px-3 py-2 text-left")}
+                    onClick={() => {
+                      closeMenu();
+                      signIn("github", { callbackUrl: "/register" });
+                    }}
+                  >
+                    Register
+                  </button>
+                ))}
               {session?.user?.isMaintainer && (
                 <Link
                   href="/dashboard"
@@ -432,6 +468,12 @@ function LocaleSwitcherMobile() {
                   >
                     Sign out
                   </Button>
+                ) : demoMode ? (
+                  <Button asChild variant="stellar" size="sm" className="justify-start">
+                    <Link href="/demo" onClick={closeMenu}>
+                      Open the live demo
+                    </Link>
+                  </Button>
                 ) : (
                   <Button
                     variant="stellar"
@@ -453,4 +495,17 @@ function LocaleSwitcherMobile() {
       )}
     </header>
   );
+}
+
+/** Production header: reads the live NextAuth session. */
+export function Header() {
+  const { data: session } = useSession();
+  return (
+    <HeaderContent session={session ?? null} demoMode={isDemoModeEnabled()} />
+  );
+}
+
+/** Public demo header: no SessionProvider or session API call required. */
+export function DemoHeader() {
+  return <HeaderContent session={null} demoMode />;
 }

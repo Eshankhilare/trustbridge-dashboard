@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
+import type { Session } from "next-auth";
 import {
   ArrowRight,
   CheckCircle2,
@@ -21,13 +21,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { authOptions } from "@/lib/auth";
-import { getDashboardStats } from "@/lib/registrations";
+import { getDemoDashboardStats } from "@/lib/demo-data";
+import { isDemoModeEnabled } from "@/lib/demo-mode";
+import type { DashboardStats } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 async function loadStats() {
   try {
+    // Loaded lazily so demo mode never initialises Prisma or requires a
+    // DATABASE_URL just to render the public landing page.
+    const { getDashboardStats } = await import("@/lib/registrations");
     return await getDashboardStats();
   } catch {
     return { totalContributors: 0, readyCount: 0, readyPercent: 0 };
@@ -35,8 +39,18 @@ async function loadStats() {
 }
 
 export default async function HomePage() {
-  const session = await getServerSession(authOptions);
-  const stats = await loadStats();
+  const demoMode = isDemoModeEnabled();
+  let session: Session | null = null;
+  let stats: DashboardStats;
+
+  if (demoMode) {
+    stats = getDemoDashboardStats();
+  } else {
+    const { getServerSession } = await import("next-auth");
+    const { authOptions } = await import("@/lib/auth");
+    session = await getServerSession(authOptions);
+    stats = await loadStats();
+  }
 
   return (
     <div className="relative overflow-hidden">
@@ -49,7 +63,9 @@ export default async function HomePage() {
       <main id="main-content" tabIndex={-1} className="mx-auto max-w-7xl px-6 pb-20 pt-20 sm:px-8 lg:pb-24 lg:pt-24">
         <div className="mx-auto max-w-2xl text-center">
           <p className="mb-5 inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground">
-            Open source · Stellar · GitHub OAuth
+            {demoMode
+              ? "Public demo · Synthetic data · No sign-in required"
+              : "Open source · Stellar · GitHub OAuth"}
           </p>
           <h1 className="text-balance text-4xl font-bold tracking-tight sm:text-5xl sm:leading-[1.12] lg:text-6xl">
             Bridge open-source work to{" "}
@@ -68,7 +84,29 @@ export default async function HomePage() {
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            {session ? (
+            {demoMode ? (
+              <>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="stellar"
+                  className="h-12 px-8 text-base"
+                >
+                  <Link href="/demo">
+                    Explore the live demo
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="outline"
+                  className="h-12 px-6"
+                >
+                  <Link href="#how-it-works">How it works</Link>
+                </Button>
+              </>
+            ) : session ? (
               <Button
                 asChild
                 size="lg"
@@ -91,7 +129,7 @@ export default async function HomePage() {
                 Register your Stellar address
               </SignInButton>
             )}
-            {session?.user?.isMaintainer && (
+            {!demoMode && session?.user?.isMaintainer && (
               <Button asChild size="lg" variant="outline" className="h-12 px-6">
                 <Link href="/dashboard">Maintainer dashboard</Link>
               </Button>
@@ -143,10 +181,19 @@ export default async function HomePage() {
             </CardContent>
           </Card>
         </div>
+        {demoMode && (
+          <p className="mx-auto max-w-3xl px-6 pb-12 text-center text-sm text-muted-foreground sm:px-8">
+            The public demo uses synthetic contributors and activity. No real
+            wallets, balances, transactions, or maintainer records are shown.
+          </p>
+        )}
       </section>
 
       {/* How it works — structured, left-aligned copy */}
-      <section className="mx-auto max-w-7xl px-6 py-20 sm:px-8 lg:py-24">
+      <section
+        id="how-it-works"
+        className="mx-auto max-w-7xl scroll-mt-24 px-6 py-20 sm:px-8 lg:py-24"
+      >
         <div className="max-w-2xl text-left">
           <h2 className="text-3xl font-bold tracking-tight">
             How TrustBridge works
@@ -206,7 +253,16 @@ export default async function HomePage() {
             Registration takes less than two minutes once your Stellar wallet is
             funded and your USDC trustline is active.
           </p>
-          {session ? (
+          {demoMode ? (
+            <Button
+              asChild
+              className="mt-8 h-12 px-8 text-base"
+              variant="stellar"
+              size="lg"
+            >
+              <Link href="/demo">Open the public demo</Link>
+            </Button>
+          ) : session ? (
             <Button
               asChild
               className="mt-8 h-12 px-8 text-base"

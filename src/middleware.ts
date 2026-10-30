@@ -1,5 +1,5 @@
 import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { recordAuditLog } from "@/lib/audit";
 import {
@@ -7,6 +7,8 @@ import {
   shouldBlockForMaintenance,
 } from "@/lib/maintenance";
 import { extractRequestId, generateRequestId } from "@/lib/request-id";
+
+const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 /**
  * RBAC path rules (default deny):
@@ -17,7 +19,40 @@ import { extractRequestId, generateRequestId } from "@/lib/request-id";
  * /api/contributors   -> operator+ (POST = admin-only for batch recheck)
  * /api/invites        -> admin-only
  */
-export default withAuth(
+/**
+ * Demo-only middleware. It intentionally does not invoke `withAuth`, so demo
+ * deployments do not need NEXTAUTH_SECRET, OAuth, or a database. Real
+ * dashboard/register routes are redirected to the isolated `/demo` page.
+ */
+function demoMiddleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  const requestId = extractRequestId(req.headers) ?? generateRequestId();
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-request-id", requestId);
+
+  if (shouldBlockForMaintenance(req.method, path)) {
+    const maintenanceResponse = NextResponse.json(
+      { error: "maintenance_mode", message: getMaintenanceMessage() },
+      { status: 503, headers: { "Retry-After": "120" } }
+    );
+    maintenanceResponse.headers.set("x-request-id", requestId);
+    return maintenanceResponse;
+  }
+
+  if (path.startsWith("/dashboard") || path.startsWith("/register")) {
+    const redirectResponse = NextResponse.redirect(new URL("/demo", req.url));
+    redirectResponse.headers.set("x-request-id", requestId);
+    return redirectResponse;
+  }
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  response.headers.set("x-request-id", requestId);
+  return response;
+}
+
+const authMiddleware = withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const isMaintainer = token?.isMaintainer;
@@ -120,6 +155,8 @@ export default withAuth(
     },
   }
 );
+
+export default demoMode ? demoMiddleware : authMiddleware;
 
 export const config = {
   // `/api/:path*` is matched so maintenance mode can 503 mutating API calls.
