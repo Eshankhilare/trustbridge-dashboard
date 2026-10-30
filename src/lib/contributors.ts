@@ -37,6 +37,110 @@ export function defaultVisibleColumns(): Set<ContributorColumnKey> {
   );
 }
 
+/**
+ * A single contributor table column in the maintainer's chosen order.
+ * Hidden columns stay in the list so re-showing them restores their position.
+ */
+export interface ContributorColumnPreference {
+  key: ContributorColumnKey;
+  visible: boolean;
+}
+
+export type ContributorColumnPreferencesValidation =
+  | { valid: true; preferences: ContributorColumnPreference[] }
+  | { valid: false; errors: string[] };
+
+const CONTRIBUTOR_COLUMN_KEYS = new Set<string>(
+  CONTRIBUTOR_COLUMNS.map((column) => column.key),
+);
+
+/** Default ordered preference list, preserving the canonical column order. */
+export function defaultContributorColumnPreferences(): ContributorColumnPreference[] {
+  return CONTRIBUTOR_COLUMNS.map((column) => ({
+    key: column.key,
+    visible: column.defaultVisible,
+  }));
+}
+
+/**
+ * Validate persisted/submitted column preferences.
+ *
+ * The preference list is the single source of truth for both visibility and
+ * order, so it must contain every available column exactly once. Unknown keys,
+ * duplicates, missing/extra entries and an all-hidden table are rejected.
+ */
+export function validateContributorColumnPreferences(
+  input: unknown,
+): ContributorColumnPreferencesValidation {
+  if (!Array.isArray(input)) {
+    return {
+      valid: false,
+      errors: ["Column preferences must be an array."],
+    };
+  }
+
+  const errors: string[] = [];
+
+  if (input.length !== CONTRIBUTOR_COLUMNS.length) {
+    errors.push(
+      `Column preferences must list all ${CONTRIBUTOR_COLUMNS.length} columns exactly once.`,
+    );
+  }
+
+  const seen = new Set<string>();
+  const preferences: ContributorColumnPreference[] = [];
+
+  input.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      errors.push(`Column preference at position ${index + 1} must be an object.`);
+      return;
+    }
+
+    const { key, visible } = entry as { key?: unknown; visible?: unknown };
+
+    if (typeof key !== "string" || !CONTRIBUTOR_COLUMN_KEYS.has(key)) {
+      errors.push(`Unknown column at position ${index + 1}.`);
+      return;
+    }
+
+    if (seen.has(key)) {
+      errors.push(`Duplicate column: ${key}.`);
+      return;
+    }
+
+    if (typeof visible !== "boolean") {
+      errors.push(`Column ${key} must include a boolean visible flag.`);
+      return;
+    }
+
+    seen.add(key);
+    preferences.push({ key: key as ContributorColumnKey, visible });
+  });
+
+  if (preferences.length > 0 && !preferences.some((entry) => entry.visible)) {
+    errors.push("At least one column must remain visible.");
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors };
+  }
+
+  return { valid: true, preferences };
+}
+
+/**
+ * Resolve persisted preferences, falling back to defaults when the stored value
+ * is missing or no longer valid (for example after a column is renamed).
+ */
+export function resolveContributorColumnPreferences(
+  input: unknown,
+): ContributorColumnPreference[] {
+  const result = validateContributorColumnPreferences(input);
+  return result.valid
+    ? result.preferences
+    : defaultContributorColumnPreferences();
+}
+
 export function readinessNeedsAttention(readiness: ReadinessStatus): boolean {
   return readiness !== "ready";
 }

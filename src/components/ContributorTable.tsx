@@ -4,9 +4,13 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
   Download,
   Loader2,
   RefreshCw,
+  RotateCcw,
+  Save,
   Search,
   SlidersHorizontal,
   Users,
@@ -19,11 +23,13 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   CONTRIBUTOR_COLUMNS,
-  defaultVisibleColumns,
+  defaultContributorColumnPreferences,
   filterContributors,
   searchContributors,
   sortContributors,
+  validateContributorColumnPreferences,
   type ContributorColumnKey,
+  type ContributorColumnPreference,
   type ContributorFilter,
   type ContributorSortKey,
 } from "@/lib/contributors";
@@ -61,6 +67,11 @@ interface ContributorTableProps {
   viewerRole?: ContributorViewerRole;
   /** Registration page path for invite/share actions. Defaults to `/register`. */
   registerUrl?: string;
+  /**
+   * API endpoint for per-maintainer, per-org column preferences. When omitted,
+   * column visibility and order stay local to this table only.
+   */
+  columnPreferencesEndpoint?: string | null;
   className?: string;
 }
 
@@ -270,6 +281,66 @@ function MobileContributorCard({
     </article>
   );
 }
+function ContributorColumnCell({
+  column,
+  row,
+}: {
+  column: ContributorColumnKey;
+  row: ContributorRow;
+}) {
+  switch (column) {
+    case "githubUsername":
+      return (
+        <th className="px-4 py-3 font-medium" scope="row">
+          <span>{formatGithubHandle(row.githubUsername)}</span>
+          {row.banned && (
+            <span
+              className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950/80 dark:text-red-300"
+              title={row.banReason ? `Banned: ${row.banReason}` : "Banned"}
+              data-testid={`banned-badge-${row.githubUsername}`}
+            >
+              🚫 Banned
+            </span>
+          )}
+        </th>
+      );
+    case "stellarAddress":
+      return (
+        <td className="px-4 py-3 font-mono text-xs" title={row.stellarAddress}>
+          {shortenAddress(row.stellarAddress)}
+        </td>
+      );
+    case "readiness":
+      return (
+        <td className="px-4 py-3">
+          <TrustlineStatusBadge status={row.readiness} />
+        </td>
+      );
+    case "verified":
+      return (
+        <td className="px-4 py-3">
+          <VerifiedBadge verified={row.verified} />
+        </td>
+      );
+    case "xlmBalance":
+      return <td className="px-4 py-3">{formatXlmBalance(row.xlmBalance)}</td>;
+    case "spendableXlmBalance":
+      return (
+        <td className="px-4 py-3">
+          {formatXlmBalance(row.spendableXlmBalance)}
+        </td>
+      );
+    case "lastCheckedAt":
+      return (
+        <td className="px-4 py-3 text-muted-foreground">
+          {formatRelativeTime(row.lastCheckedAt)}
+        </td>
+      );
+    default:
+      return null;
+  }
+}
+
 export function ContributorTable({
   contributors,
   onExport,
@@ -282,6 +353,7 @@ export function ContributorTable({
   isLoadingMore = false,
   viewerRole = "maintainer",
   registerUrl = "/register",
+  columnPreferencesEndpoint = null,
   className,
 }: ContributorTableProps) {
   const headingId = useId();
@@ -296,10 +368,17 @@ export function ContributorTable({
   const [sortKey, setSortKey] = useState<SortKey>("githubUsername");
   const [sortAsc, setSortAsc] = useState(true);
   const [search, setSearch] = useState("");
-  const [visibleColumns, setVisibleColumns] = useState<Set<ContributorColumnKey>>(
-    () => defaultVisibleColumns()
-  );
+  const [columnPreferences, setColumnPreferences] = useState<
+    ContributorColumnPreference[]
+  >(() => defaultContributorColumnPreferences());
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [preferencesMessage, setPreferencesMessage] = useState<string | null>(
+    null
+  );
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const [preferencesReloadToken, setPreferencesReloadToken] = useState(0);
   // Which export the confirmation dialog is standing in front of, or null when
   // it is closed. Both formats share one dialog.
   const [pendingExport, setPendingExport] = useState<"csv" | "json" | null>(null);
@@ -316,6 +395,60 @@ export function ContributorTable({
     () => buildStalenessSummary(contributors),
     [contributors]
   );
+
+  useEffect(() => {
+    if (!columnPreferencesEndpoint) return;
+
+    const controller = new AbortController();
+    let active = true;
+
+    setIsLoadingPreferences(true);
+    setPreferencesError(null);
+    setPreferencesMessage(null);
+
+    fetch(columnPreferencesEndpoint, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load column preferences");
+        }
+        return (await response.json()) as { columns?: unknown };
+      })
+      .then((data) => {
+        if (!active) return;
+        const validated = validateContributorColumnPreferences(data?.columns);
+        if (!validated.valid) {
+          setColumnPreferences(defaultContributorColumnPreferences());
+          setPreferencesError(
+            "Saved column preferences could not be read. Using defaults."
+          );
+          return;
+        }
+        setColumnPreferences(validated.preferences);
+      })
+      .catch((error: unknown) => {
+        if (
+          !active ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
+        setPreferencesError(
+          "Could not load column preferences. Using defaults."
+        );
+      })
+      .finally(() => {
+        if (active) setIsLoadingPreferences(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [columnPreferencesEndpoint, preferencesReloadToken]);
 
   React.useEffect(() => {
     if (!showColumnPicker) return;
@@ -442,16 +575,94 @@ export function ContributorTable({
     setShowColumnPicker(true);
   }
 
+  const visibleColumnKeys = useMemo(
+    () =>
+      columnPreferences
+        .filter((preference) => preference.visible)
+        .map((preference) => preference.key),
+    [columnPreferences]
+  );
+
+  function clearPreferencesStatus() {
+    setPreferencesMessage(null);
+    setPreferencesError(null);
+  }
+
   function toggleColumn(key: ContributorColumnKey) {
-    setVisibleColumns((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+    setColumnPreferences((prev) => {
+      const isVisible = prev.some(
+        (preference) => preference.key === key && preference.visible
+      );
+      const visibleCount = prev.filter((preference) => preference.visible).length;
+
+      // The server also enforces this, but keeping the last column enabled in
+      // the UI avoids a save that can only fail.
+      if (isVisible && visibleCount <= 1) return prev;
+
+      return prev.map((preference) =>
+        preference.key === key
+          ? { ...preference, visible: !isVisible }
+          : preference
+      );
+    });
+    clearPreferencesStatus();
+  }
+
+  function moveColumn(key: ContributorColumnKey, direction: -1 | 1) {
+    setColumnPreferences((prev) => {
+      const index = prev.findIndex((preference) => preference.key === key);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= prev.length) return prev;
+
+      const next = [...prev];
+      const [entry] = next.splice(index, 1);
+      next.splice(target, 0, entry);
       return next;
     });
+    clearPreferencesStatus();
+  }
+
+  function resetColumns() {
+    setColumnPreferences(defaultContributorColumnPreferences());
+    clearPreferencesStatus();
+  }
+
+  async function saveColumnPreferences() {
+    if (!columnPreferencesEndpoint || isSavingPreferences) return;
+
+    setIsSavingPreferences(true);
+    setPreferencesError(null);
+    setPreferencesMessage(null);
+
+    try {
+      const response = await fetch(columnPreferencesEndpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columns: columnPreferences }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(body?.error ?? "Failed to save column preferences");
+      }
+
+      const data = (await response.json()) as { columns?: unknown };
+      const validated = validateContributorColumnPreferences(data?.columns);
+      if (validated.valid) {
+        setColumnPreferences(validated.preferences);
+      }
+      setPreferencesMessage("Column preferences saved.");
+    } catch (error) {
+      setPreferencesError(
+        error instanceof Error
+          ? error.message
+          : "Could not save column preferences."
+      );
+    } finally {
+      setIsSavingPreferences(false);
+    }
   }
 
   function getAriaSort(key: SortKey): "ascending" | "descending" | "none" {
@@ -459,12 +670,9 @@ export function ContributorTable({
     return sortAsc ? "ascending" : "descending";
   }
 
-  function isVisible(key: ContributorColumnKey) {
-    return visibleColumns.has(key);
-  }
-
-  const visibleCount = visibleColumns.size;
-  const emptyStateColSpan = visibleCount + 1 + (onRecheck ? 1 : 0);
+  const visibleCount = visibleColumnKeys.length;
+  const emptyStateColSpan =
+    visibleCount + 1 + (onRecheck || onBanToggle ? 1 : 0);
 
   function SortHeader({
     sortable,
@@ -619,28 +827,154 @@ export function ContributorTable({
           data-testid="column-picker"
         >
           <legend className="mb-2 text-sm font-medium text-muted-foreground">
-            Toggle visible columns
+            Customize contributor table columns
           </legend>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Use the checkboxes to show or hide columns, and the arrow buttons to
+            change their order.
+          </p>
           <p className="sr-only">Press Escape to close and return to the Columns button.</p>
-          <div className="flex flex-wrap gap-3">
-            {CONTRIBUTOR_COLUMNS.map((col) => (
-              <label
-                key={col.key}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
-                  visibleColumns.has(col.key)
-                    ? "border-stellar-purple bg-stellar-purple/10 text-stellar-purple"
-                    : "border-muted bg-muted/30 text-muted-foreground"
-                )}
+
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-2 min-h-5 text-xs text-muted-foreground"
+            data-testid="column-preferences-status"
+          >
+            {isLoadingPreferences ? (
+              <span className="inline-flex items-center gap-1">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Loading saved column preferences...
+              </span>
+            ) : (
+              preferencesMessage
+            )}
+          </div>
+
+          {preferencesError && (
+            <p
+              role="alert"
+              className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              data-testid="column-preferences-error"
+            >
+              {preferencesError}
+              <Button
+                type="button"
+                size="sm"
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={() => setPreferencesReloadToken((token) => token + 1)}
               >
-                <input
-                  type="checkbox"
-                  checked={visibleColumns.has(col.key)}
-                  onChange={() => toggleColumn(col.key)}
-                />
-                {col.label}
-              </label>
-            ))}
+                Retry loading
+              </Button>
+            </p>
+          )}
+
+          <ul className="space-y-2">
+            {columnPreferences.map((preference, index) => {
+              const column = CONTRIBUTOR_COLUMNS.find(
+                (candidate) => candidate.key === preference.key
+              );
+              if (!column) return null;
+
+              const isLastVisible =
+                preference.visible && visibleCount === 1;
+
+              return (
+                <li
+                  key={preference.key}
+                  className="flex flex-wrap items-center justify-between gap-2"
+                >
+                  <label
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
+                      preference.visible
+                        ? "border-stellar-purple bg-stellar-purple/10 text-stellar-purple"
+                        : "border-muted bg-muted/30 text-muted-foreground"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={preference.visible}
+                      onChange={() => toggleColumn(preference.key)}
+                      disabled={isLastVisible}
+                      aria-describedby={
+                        isLastVisible
+                          ? `${columnPickerId}-last-visible`
+                          : undefined
+                      }
+                    />
+                    {column.label}
+                  </label>
+
+                  <div
+                    className="flex items-center gap-1"
+                    role="group"
+                    aria-label={`Reorder ${column.label} column`}
+                  >
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => moveColumn(preference.key, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${column.label} up`}
+                      data-testid={`move-column-up-${preference.key}`}
+                    >
+                      <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => moveColumn(preference.key, 1)}
+                      disabled={index === columnPreferences.length - 1}
+                      aria-label={`Move ${column.label} down`}
+                      data-testid={`move-column-down-${preference.key}`}
+                    >
+                      <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p
+            id={`${columnPickerId}-last-visible`}
+            className="mt-2 text-xs text-muted-foreground"
+          >
+            At least one column must stay visible.
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={resetColumns}
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Reset to defaults
+            </Button>
+            {columnPreferencesEndpoint && (
+              <Button
+                type="button"
+                size="sm"
+                variant="stellar"
+                onClick={() => void saveColumnPreferences()}
+                disabled={isSavingPreferences}
+              >
+                {isSavingPreferences ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isSavingPreferences ? "Saving..." : "Save preferences"}
+              </Button>
+            )}
           </div>
         </fieldset>
       )}
@@ -762,61 +1096,37 @@ export function ContributorTable({
           </caption>
           <thead className="bg-muted/50">
             <tr className="text-left">
-              {isVisible("githubUsername") && (
-                <th
-                  className="px-4 py-3 font-medium"
-                  scope="col"
-                  aria-sort={getAriaSort("githubUsername")}
-                >
-                  <SortHeader sortable="githubUsername" label="GitHub" />
-                </th>
-              )}
-              {isVisible("stellarAddress") && (
-                <th className="px-4 py-3 font-medium" scope="col">
-                  Stellar address
-                </th>
-              )}
-              {isVisible("readiness") && (
-                <th
-                  className="px-4 py-3 font-medium"
-                  scope="col"
-                  aria-sort={getAriaSort("readiness")}
-                >
-                  <SortHeader sortable="readiness" label="Status" />
-                </th>
-              )}
-              {isVisible("verified") && (
-                <th className="px-4 py-3 font-medium" scope="col">
-                  Verified
-                </th>
-              )}
-              {isVisible("xlmBalance") && (
-                <th
-                  className="px-4 py-3 font-medium"
-                  scope="col"
-                  aria-sort={getAriaSort("xlmBalance")}
-                >
-                  <SortHeader sortable="xlmBalance" label="XLM" />
-                </th>
-              )}
-              {isVisible("spendableXlmBalance") && (
-                <th className="px-4 py-3 font-medium" scope="col">
-                  Spendable XLM
-                </th>
-              )}
-              {isVisible("lastCheckedAt") && (
-                <th
-                  className="px-4 py-3 font-medium"
-                  scope="col"
-                  aria-sort={getAriaSort("lastCheckedAt")}
-                >
-                  <SortHeader sortable="lastCheckedAt" label="Last checked" />
-                </th>
-              )}
+              {visibleColumnKeys.map((key) => {
+                const column = CONTRIBUTOR_COLUMNS.find(
+                  (candidate) => candidate.key === key
+                );
+                if (!column) return null;
+
+                const sortable =
+                  key === "githubUsername" ||
+                  key === "readiness" ||
+                  key === "xlmBalance" ||
+                  key === "lastCheckedAt";
+
+                return (
+                  <th
+                    key={key}
+                    className="px-4 py-3 font-medium"
+                    scope="col"
+                    aria-sort={sortable ? getAriaSort(key as SortKey) : undefined}
+                  >
+                    {sortable ? (
+                      <SortHeader sortable={key as SortKey} label={column.label} />
+                    ) : (
+                      column.label
+                    )}
+                  </th>
+                );
+              })}
               <th className="px-4 py-3 font-medium" scope="col">
                 Diagnostics
               </th>
-              {onRecheck && (
+              {(onRecheck || onBanToggle) && (
                 <th className="px-4 py-3 text-right font-medium" scope="col">
                   Actions
                 </th>
@@ -836,48 +1146,9 @@ export function ContributorTable({
                   key={row.id}
                   className={cn("border-t bg-card/50 align-top", getRowAccent(row.readiness))}
                 >
-                  {isVisible("githubUsername") && (
-                    <th className="px-4 py-3 font-medium" scope="row">
-                      <span>{formatGithubHandle(row.githubUsername)}</span>
-                      {row.banned && (
-                        <span
-                          className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950/80 dark:text-red-300"
-                          title={row.banReason ? `Banned: ${row.banReason}` : "Banned"}
-                          data-testid={`banned-badge-${row.githubUsername}`}
-                        >
-                          🚫 Banned
-                        </span>
-                      )}
-                    </th>
-                  )}
-                  {isVisible("stellarAddress") && (
-                    <td className="px-4 py-3 font-mono text-xs" title={row.stellarAddress}>
-                      {shortenAddress(row.stellarAddress)}
-                    </td>
-                  )}
-                  {isVisible("readiness") && (
-                    <td className="px-4 py-3">
-                      <TrustlineStatusBadge status={row.readiness} />
-                    </td>
-                  )}
-                  {isVisible("verified") && (
-                    <td className="px-4 py-3">
-                      <VerifiedBadge verified={row.verified} />
-                    </td>
-                  )}
-                  {isVisible("xlmBalance") && (
-                    <td className="px-4 py-3">{formatXlmBalance(row.xlmBalance)}</td>
-                  )}
-                  {isVisible("spendableXlmBalance") && (
-                    <td className="px-4 py-3">
-                      {formatXlmBalance(row.spendableXlmBalance)}
-                    </td>
-                  )}
-                  {isVisible("lastCheckedAt") && (
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatRelativeTime(row.lastCheckedAt)}
-                    </td>
-                  )}
+                  {visibleColumnKeys.map((key) => (
+                    <ContributorColumnCell key={key} column={key} row={row} />
+                  ))}
                   <td className="min-w-[280px] px-4 py-3">
                     <ContributorDebugPanel row={row} />
                   </td>

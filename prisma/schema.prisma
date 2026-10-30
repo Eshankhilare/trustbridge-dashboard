@@ -25,6 +25,7 @@ model User {
   invites         Invite[]
   apiKeys         ApiKey[]
   notifications   Notification[]
+  columnPreferences ContributorColumnPreference[]
   attemptedConflicts RegistrationConflict[] @relation("AttemptedConflicts")
   existingConflicts  RegistrationConflict[] @relation("ExistingConflicts")
   banned          Boolean       @default(false)
@@ -204,6 +205,22 @@ model FeatureFlag {
   updatedById String?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+}
+
+/// Per-maintainer, per-org contributor table column visibility and order.
+/// `columns` is an ordered array of { key, visible } entries covering every
+/// available column exactly once.
+model ContributorColumnPreference {
+  id              String   @id @default(cuid())
+  maintainerOrgId String   @default("default")
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  columns         Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, maintainerOrgId])
+  @@index([maintainerOrgId])
 }
 
 /// Maintainer API keys for programmatic / cron access to export endpoints.

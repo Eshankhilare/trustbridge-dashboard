@@ -3,7 +3,6 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 
 import { toAuditLogEntry } from "@/lib/audit-format";
-import { prisma } from "@/lib/prisma";
 import type { AuditAction, AuditLogEntry } from "@/types";
 
 export interface RecordAuditInput {
@@ -16,6 +15,16 @@ export interface RecordAuditInput {
 }
 
 /**
+ * Load Prisma lazily so Edge middleware can import this module without pulling
+ * the Prisma client into the Edge runtime bundle. Audit writes from Edge
+ * middleware remain best-effort and fail without blocking the request.
+ */
+async function getPrisma() {
+  const { prisma } = await import("@/lib/prisma");
+  return prisma;
+}
+
+/**
  * Persist a maintainer action to the audit log.
  *
  * Auditing is best-effort: a logging failure must never break the primary
@@ -23,6 +32,7 @@ export interface RecordAuditInput {
  */
 export async function recordAuditLog(input: RecordAuditInput): Promise<void> {
   try {
+    const prisma = await getPrisma();
     await prisma.auditLog.create({
       data: {
         action: input.action,
@@ -77,6 +87,7 @@ export async function recordNetworkSwitchAudit(input: {
 export async function recordAuditLogStrict(
   input: RecordAuditInput,
 ): Promise<void> {
+  const prisma = await getPrisma();
   await prisma.auditLog.create({
     data: {
       action: input.action,
@@ -93,6 +104,7 @@ export async function recordAuditLogStrict(
 /** Read the most recent audit log entries, newest first. */
 export async function getRecentAuditLog(limit = 50): Promise<AuditLogEntry[]> {
   const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 200);
+  const prisma = await getPrisma();
   const rows = await prisma.auditLog.findMany({
     orderBy: { createdAt: "desc" },
     take: safeLimit,

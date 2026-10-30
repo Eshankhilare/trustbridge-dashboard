@@ -401,6 +401,7 @@ export default function DashboardPage() {
         <>
           <ContributorTable
             contributors={pager.contributors}
+            columnPreferencesEndpoint="/api/contributors/column-preferences"
             // `force`: ContributorTable has already shown the accessible export
             // confirmation, staleness warning included. Leaving this unforced
             // stacks a second, native `window.confirm()` on top of it.
